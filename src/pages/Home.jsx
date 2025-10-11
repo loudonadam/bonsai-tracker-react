@@ -71,7 +71,7 @@ const Home = () => {
     <div className="min-h-screen bg-gray-50">
       {/* HEADER */}
 <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-  <div className="px-3 sm:px-6 lg:px-8 xl:px-10 py-2">
+  <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-2">
     {/* Desktop layout: title + search left, settings right */}
     <div className="hidden lg:flex items-center justify-between gap-4">
       <div className="flex items-center gap-4 flex-1">
@@ -142,7 +142,7 @@ const Home = () => {
 
 
       {/* MAIN CONTENT GRID */}
-      <main className="container max-w-8xl px-4 sm:px-6 lg:px-8 py-4 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
         {/* ── Sidebar ── */}
         <aside className="space-y-4">
           {/* Desktop-only action buttons above Quick Stats */}
