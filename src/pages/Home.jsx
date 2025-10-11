@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus,
   Settings,
-  Download,
   Search,
   BookOpen,
   Bell,
@@ -13,7 +12,7 @@ import {
 } from "lucide-react";
 import TreeCard from "../components/TreeCard";
 
-// ─── Mock Data (unchanged) ───────────────────────────────────────────
+// ─── Mock Data ───────────────────────────────────────────
 const mockTrees = [
   { id: 1, name: "Autumn Flame", species: "Japanese Maple (Acer palmatum)", acquisitionDate: "2018-04-20", currentGirth: 15.3, lastUpdate: "2024-11-15", photoUrl: null, starred: true, notes: "Beautiful red leaves in fall. Needs repotting next spring." },
   { id: 2, name: "Ancient Pine", species: "Japanese Black Pine", acquisitionDate: "2015-06-10", currentGirth: 22.7, lastUpdate: "2024-10-28", photoUrl: null, starred: false, notes: "Very healthy. Wire training going well." },
@@ -27,7 +26,7 @@ const mockReminders = [
   { id: 3, treeId: 3, treeName: "Baby Juniper", message: "Begin fertilizing schedule", dueDate: "2025-04-01", isOverdue: false },
 ];
 
-// ─── Component ──────────────────────────────────────────────────────
+// ─── Component ───────────────────────────────────────────
 const Home = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,87 +65,83 @@ const Home = () => {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  // ─── Render ───────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────
   return (
+    // 🎨 COLOR: Background color
     <div className="min-h-screen bg-gray-50">
       {/* HEADER */}
-<header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-  <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-2">
-    {/* Desktop layout: title + search left, settings right */}
-    <div className="hidden lg:flex items-center justify-between gap-4">
-      <div className="flex items-center gap-4 flex-1">
-        <h1 className="text-2xl font-bold text-gray-900 whitespace-nowrap">
-          🌱 Bonsai Tracker
-        </h1>
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search trees..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent"
-          />
-          {searchQuery && (
+      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+        {/* Removed max-width constraint to make full-width */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
+          <div className="hidden lg:flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 flex-1">
+              {/* 🎨 COLOR: Header text */}
+              <h1 className="text-2xl font-bold text-gray-900 whitespace-nowrap">
+                🌱 Bonsai Tracker
+              </h1>
+              <div className="relative w-full max-w-md">
+                {/* 🎨 COLOR: Search icon */}
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                {/* 🎨 COLOR: Input border, focus, ring */}
+                <input
+                  type="text"
+                  placeholder="Search trees..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 🎨 COLOR: Settings button hover */}
             <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => navigate("/settings")}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <X className="w-4 h-4" />
+              <Settings className="w-6 h-6" />
             </button>
-          )}
+          </div>
+
+          {/* Mobile */}
+          <div className="lg:hidden flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-gray-900">🌱 Bonsai Tracker</h1>
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search trees..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent"
+              />
+            </div>
+          </div>
         </div>
-      </div>
-
-      <button
-        onClick={() => navigate("/settings")}
-        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-      >
-        <Settings className="w-6 h-6" />
-      </button>
-    </div>
-
-    {/* Mobile/tablet layout (unchanged) */}
-    <div className="lg:hidden flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">🌱 Bonsai Tracker</h1>
-        <button
-          onClick={() => navigate("/settings")}
-          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search trees..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-    </div>
-  </div>
-</header>
-
+      </header>
 
       {/* MAIN CONTENT GRID */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-        {/* ── Sidebar ── */}
+      {/* Removed max-width constraint — now fully responsive width */}
+      <main className="w-full px-4 sm:px-6 lg:px-8 py-4 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+        {/* Sidebar */}
         <aside className="space-y-4">
-          {/* Desktop-only action buttons above Quick Stats */}
           <div className="hidden lg:flex gap-3">
+            {/* 🎨 COLOR: Buttons */}
             <button
               onClick={() => navigate("/species")}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
@@ -163,10 +158,10 @@ const Home = () => {
             </button>
           </div>
 
-          {/* Quick Stats */}
+          {/* 🎨 COLOR: Quick Stats box */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sticky top-20">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h2>
-            <ul className="space-y-1 text-sm">
+            <ul className="space-y-1 text-sm text-gray-700">
               <li className="flex justify-between"><span>Total Trees:</span><span>{totalTrees}</span></li>
               <li className="flex justify-between"><span>Starred:</span><span>{starredCount}</span></li>
               <li className="flex justify-between"><span>Unique Species:</span><span>{uniqueSpecies}</span></li>
@@ -176,7 +171,7 @@ const Home = () => {
             </ul>
           </div>
 
-          {/* Reminders */}
+          {/* 🎨 COLOR: Reminders */}
           {(overdueReminders.length > 0 || upcomingReminders.length > 0) && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               <button
@@ -202,6 +197,7 @@ const Home = () => {
               {showReminders && (
                 <div className="px-4 pb-4 space-y-2">
                   {[...overdueReminders, ...upcomingReminders].map((r) => (
+                    // 🎨 COLOR: Reminder background
                     <div
                       key={r.id}
                       onClick={() => navigate(`/tree/${r.treeId}`)}
@@ -270,13 +266,15 @@ const Home = () => {
                   : "Start your bonsai journey by adding your first tree"}
               </p>
               {!searchQuery && (
+                // 🎨 COLOR: Add tree button
                 <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                   Add Your First Tree
                 </button>
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+            // 🎨 COLOR: Adjusted grid layout for wide screens
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
               {filteredTrees.map((tree) => (
                 <div key={tree.id} onClick={() => navigate(`/tree/${tree.id}`)}>
                   <TreeCard tree={tree} />
