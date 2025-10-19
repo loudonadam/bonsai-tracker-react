@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Calendar, Ruler, Star } from 'lucide-react';
+import { Camera, Calendar, Ruler } from 'lucide-react';
 
 // TreeCard Component - displays a single bonsai tree
 const TreeCard = ({ 
@@ -11,7 +11,6 @@ const TreeCard = ({
     currentGirth: 12.5,
     lastUpdate: "2024-12-01",
     photoUrl: null,
-    starred: false,
     notes: "Beautiful fall colors"
   }
 }) => {
@@ -42,13 +41,6 @@ const TreeCard = ({
           />
         ) : (
           <Camera className="w-16 h-16 text-green-400" strokeWidth={1.5} />
-        )}
-        
-        {/* Starred indicator */}
-        {tree.starred && (
-          <div className="absolute top-2 right-2 bg-yellow-400 rounded-full p-1.5">
-            <Star className="w-4 h-4 text-white fill-white" />
-          </div>
         )}
       </div>
 
