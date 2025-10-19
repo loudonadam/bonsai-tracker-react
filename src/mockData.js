@@ -16,7 +16,6 @@ const mockTrees = [
         file_path: "/images/redwood1-2023-04.jpg",
         photo_date: "2023-04-12",
         description: "Early spring growth",
-        is_starred: 1,
       },
     ],
     updates: [
@@ -51,7 +50,6 @@ const mockTrees = [
         file_path: "/images/maple1-2023-08.jpg",
         photo_date: "2023-08-15",
         description: "Summer foliage",
-        is_starred: 0,
       },
     ],
     updates: [

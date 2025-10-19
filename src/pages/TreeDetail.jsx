@@ -10,8 +10,8 @@ import {
   ChevronRight,
   X,
   Camera,
-  AlertTriangle,
-  Trash2
+  Trash2,
+  Download,
 } from 'lucide-react';
 
 // Try importing Recharts safely
@@ -64,6 +64,12 @@ const TreeDetail = () => {
   const [showAccoladeModal, setShowAccoladeModal] = useState(false);
   const [newAccolade, setNewAccolade] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [newUpdate, setNewUpdate] = useState({
+    date: "",
+    girth: "",
+    workPerformed: "",
+  });
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -117,6 +123,50 @@ const TreeDetail = () => {
     setCurrentPhotoIndex((prev) => (prev === tree.photos.length - 1 ? 0 : prev + 1));
   const prevPhoto = () =>
     setCurrentPhotoIndex((prev) => (prev === 0 ? tree.photos.length - 1 : prev - 1));
+
+  const handleExportTree = () => {
+    const data = JSON.stringify(tree, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    const sanitizedName = tree.name ? tree.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'tree';
+    anchor.download = `${sanitizedName || 'tree'}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const openAddUpdateModal = () => {
+    setNewUpdate({ date: "", girth: "", workPerformed: "" });
+    setShowUpdateModal(true);
+  };
+
+  const handleAddUpdate = () => {
+    if (!newUpdate.date || !newUpdate.workPerformed.trim()) {
+      return;
+    }
+
+    setTree((prev) => ({
+      ...prev,
+      updates: [
+        {
+          id: Date.now(),
+          date: newUpdate.date,
+          girth:
+            newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
+              ? Number(newUpdate.girth)
+              : prev.updates[0]?.girth ?? prev.currentGirth,
+          workPerformed: newUpdate.workPerformed.trim(),
+        },
+        ...prev.updates,
+      ],
+    }));
+
+    setNewUpdate({ date: "", girth: "", workPerformed: "" });
+    setShowUpdateModal(false);
+  };
 
   // ─── Tabs ────────────────────────────────────────────────
   const OverviewTab = () => (
@@ -196,7 +246,10 @@ const TreeDetail = () => {
 
   const UpdatesTab = () => (
     <div className="space-y-4">
-      <button className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center justify-center gap-2">
+      <button
+        onClick={openAddUpdateModal}
+        className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center justify-center gap-2"
+      >
         <Plus className="w-5 h-5" />
         Add New Update
       </button>
@@ -210,10 +263,12 @@ const TreeDetail = () => {
                   <Calendar className="w-4 h-4" />
                   {formatDate(update.date)}
                 </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <Ruler className="w-4 h-4" />
-                  <span>{update.girth} cm</span>
-                </div>
+                {typeof update.girth === 'number' && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Ruler className="w-4 h-4" />
+                    <span>{update.girth} cm</span>
+                  </div>
+                )}
               </div>
               <button className="text-gray-400 hover:text-gray-600">
                 <Edit className="w-4 h-4" />
@@ -242,7 +297,13 @@ const TreeDetail = () => {
             </button>
           </div>
           <div className="flex items-center gap-4">
-
+            <button
+              onClick={handleExportTree}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Tree
+            </button>
             <button
               onClick={openEditModal}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
@@ -373,6 +434,68 @@ const TreeDetail = () => {
           </div>
         </aside>
       </main>
+
+      {showUpdateModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-lg w-full p-6 relative space-y-4">
+            <button
+              onClick={() => setShowUpdateModal(false)}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-semibold text-gray-800">Add Tree Update</h3>
+
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Date
+              <input
+                type="date"
+                value={newUpdate.date}
+                onChange={(e) => setNewUpdate((prev) => ({ ...prev, date: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Girth (cm)
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={newUpdate.girth}
+                onChange={(e) => setNewUpdate((prev) => ({ ...prev, girth: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                placeholder="Optional"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Work Performed
+              <textarea
+                value={newUpdate.workPerformed}
+                onChange={(e) => setNewUpdate((prev) => ({ ...prev, workPerformed: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent min-h-[120px]"
+                placeholder="Describe the work that was completed"
+              />
+            </label>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddUpdate}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+              >
+                Save Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Accolade Modal */}
       {showAccoladeModal && (

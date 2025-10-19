@@ -24,7 +24,6 @@ const initialTrees = [
     acquisitionDate: "2018-04-20",
     currentGirth: 15.3,
     lastUpdate: "2024-11-15",
-    starred: true,
     notes: "Beautiful red leaves in fall. Needs repotting next spring.",
   },
   {
@@ -34,7 +33,6 @@ const initialTrees = [
     acquisitionDate: "2015-06-10",
     currentGirth: 22.7,
     lastUpdate: "2024-10-28",
-    starred: false,
     notes: "Very healthy. Wire training going well.",
   },
 ];
@@ -62,7 +60,6 @@ const Home = () => {
 
   // ─── Derived Stats ───────────────────────────────────────────
   const totalTrees = trees.length;
-  const starredCount = trees.filter((t) => t.starred).length;
   const avgAge = (
     trees.reduce((sum, t) => {
       const age =
@@ -198,7 +195,6 @@ const Home = () => {
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h2>
             <ul className="space-y-1 text-sm text-gray-700">
               <li className="flex justify-between"><span>Total Trees:</span><span>{totalTrees}</span></li>
-              <li className="flex justify-between"><span>Starred:</span><span>{starredCount}</span></li>
               <li className="flex justify-between"><span>Unique Species:</span><span>{uniqueSpecies}</span></li>
               <li className="flex justify-between"><span>Newest:</span><span>{newestTree.name}</span></li>
               <li className="flex justify-between"><span>Oldest:</span><span>{oldestTree.name}</span></li>
