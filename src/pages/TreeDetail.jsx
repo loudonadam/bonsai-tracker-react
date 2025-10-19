@@ -56,14 +56,50 @@ const mockTreeData = {
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [tree, setTree] = useState(mockTreeData);
   const [activeTab, setActiveTab] = useState('overview');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
   const [accolades, setAccolades] = useState([]);
   const [showAccoladeModal, setShowAccoladeModal] = useState(false);
   const [newAccolade, setNewAccolade] = useState("");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editData, setEditData] = useState({
+    name: mockTreeData.name,
+    species: mockTreeData.species,
+    acquisitionDate: mockTreeData.acquisitionDate,
+    currentGirth: mockTreeData.currentGirth.toString(),
+    developmentStage: mockTreeData.developmentStage,
+    notes: mockTreeData.notes,
+  });
 
-  const tree = mockTreeData;
+  const openEditModal = () => {
+    setEditData({
+      name: tree.name,
+      species: tree.species,
+      acquisitionDate: tree.acquisitionDate,
+      currentGirth: tree.currentGirth?.toString() ?? "",
+      developmentStage: tree.developmentStage ?? "",
+      notes: tree.notes ?? "",
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSave = () => {
+    setTree((prev) => ({
+      ...prev,
+      name: editData.name.trim() || prev.name,
+      species: editData.species.trim() || prev.species,
+      acquisitionDate: editData.acquisitionDate || prev.acquisitionDate,
+      currentGirth:
+        editData.currentGirth.trim() !== "" && !Number.isNaN(Number(editData.currentGirth))
+          ? Number(editData.currentGirth)
+          : prev.currentGirth,
+      developmentStage: editData.developmentStage.trim() || prev.developmentStage,
+      notes: editData.notes,
+    }));
+    setShowEditModal(false);
+  };
 
   const calculateAge = (dateString) => {
     const start = new Date(dateString);
@@ -207,7 +243,10 @@ const TreeDetail = () => {
           </div>
           <div className="flex items-center gap-4">
 
-            <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+            <button
+              onClick={openEditModal}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+            >
               <Edit className="w-4 h-4" />
               Edit Tree
             </button>
@@ -371,6 +410,99 @@ const TreeDetail = () => {
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
               >
                 Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-xl w-full p-6 relative space-y-4">
+            <button
+              onClick={() => setShowEditModal(false)}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-semibold text-gray-800">Edit Tree Details</h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
+                Tree Name
+                <input
+                  type="text"
+                  value={editData.name}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
+                Species
+                <input
+                  type="text"
+                  value={editData.species}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, species: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
+                Date Acquired
+                <input
+                  type="date"
+                  value={editData.acquisitionDate}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, acquisitionDate: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
+                Current Girth (cm)
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={editData.currentGirth}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, currentGirth: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
+                Development Stage
+                <input
+                  type="text"
+                  value={editData.developmentStage}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, developmentStage: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
+                Notes
+                <textarea
+                  rows={4}
+                  value={editData.notes}
+                  onChange={(e) => setEditData((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent resize-none"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+              >
+                Save Changes
               </button>
             </div>
           </div>
