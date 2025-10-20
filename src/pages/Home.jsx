@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -14,6 +14,12 @@ import {
 import TreeCard from "../components/TreeCard";
 import AddTreeModal from "../components/AddTreeModal";
 import AddReminderModal from "../components/AddReminderModal";
+import {
+  appendReminderToStorage,
+  loadStoredReminders,
+  removeReminderFromStorage,
+  saveStoredReminders,
+} from "../utils/reminderStorage";
 
 // ─── Mock Data ───────────────────────────────────────────
 const initialTrees = [
@@ -47,16 +53,24 @@ const Home = () => {
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [showAddTree, setShowAddTree] = useState(false);
 
-  const [reminders, setReminders] = useState([
+  const defaultReminders = [
     {
       id: 1,
       treeId: 1,
       treeName: "Autumn Flame",
       message: "Repot in early spring",
       dueDate: "2025-03-15",
-      isOverdue: false,
     },
-  ]);
+  ];
+
+  const [reminders, setReminders] = useState(() => {
+    const stored = loadStoredReminders();
+    if (stored.length > 0) {
+      return stored;
+    }
+    saveStoredReminders(defaultReminders);
+    return defaultReminders;
+  });
 
   // ─── Derived Stats ───────────────────────────────────────────
   const totalTrees = trees.length;
@@ -78,26 +92,101 @@ const Home = () => {
 
   // ─── Reminder Helpers ───────────────────────────────────────────
   const addReminder = (reminder) => {
-    setReminders((prev) => [...prev, reminder]);
+    const newReminder = {
+      ...reminder,
+      id: reminder.id ?? Date.now(),
+    };
+    const updated = appendReminderToStorage(newReminder);
+    setReminders(updated);
     setShowAddReminder(false);
   };
 
   const handleCompleteReminder = (id) => {
-    setReminders((prev) => prev.filter((r) => r.id !== id));
+    const updated = removeReminderFromStorage(id);
+    setReminders(updated);
   };
 
-  const overdueReminders = reminders.filter((r) => r.isOverdue);
-  const upcomingReminders = reminders.filter((r) => !r.isOverdue);
+  const sortedReminders = useMemo(() => {
+    return [...reminders].sort(
+      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+    );
+  }, [reminders]);
+
+  const startOfToday = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }, []);
+
+  const overdueReminders = sortedReminders.filter(
+    (r) => new Date(r.dueDate).getTime() < startOfToday.getTime()
+  );
+  const upcomingReminders = sortedReminders.filter(
+    (r) => new Date(r.dueDate).getTime() >= startOfToday.getTime()
+  );
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
+    date.setHours(0, 0, 0, 0);
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((date - today) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Tomorrow";
     if (diffDays <= 7) return `In ${diffDays} days`;
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
+  const ReminderCard = ({ reminder, formatDate, onComplete, status }) => {
+    const isOverdue = status === "overdue";
+    return (
+      <div
+        className={`rounded-xl border p-4 shadow-sm transition ${
+          isOverdue
+            ? "border-red-200 bg-red-50/70"
+            : "border-blue-200 bg-blue-50/70"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  isOverdue
+                    ? "bg-red-100 text-red-700"
+                    : "bg-blue-100 text-blue-700"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    isOverdue ? "bg-red-500" : "bg-blue-500"
+                  }`}
+                />
+                {status === "overdue" ? "Overdue" : "Upcoming"}
+              </span>
+              <span className="text-gray-400">•</span>
+              <span className="text-gray-600">{formatDate(reminder.dueDate)}</span>
+            </div>
+            <p className="mt-2 truncate text-sm font-semibold text-gray-900">
+              {reminder.treeName}
+            </p>
+            <p className="mt-1 text-sm leading-snug text-gray-700">
+              {reminder.message}
+            </p>
+          </div>
+          <button
+            onClick={() => onComplete(reminder.id)}
+            className="shrink-0 rounded-full border border-green-200 px-3 py-1 text-xs font-medium text-green-700 transition hover:bg-green-50 hover:text-green-800"
+          >
+            <div className="flex items-center gap-1">
+              <CheckCircle className="h-4 w-4" />
+              <span>Done</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    );
   };
 
   // ─── Add Tree Logic ───────────────────────────────────────────
@@ -169,7 +258,7 @@ const Home = () => {
       </header>
 
       {/* MAIN CONTENT GRID */}
-      <main className="w-full px-4 sm:px-6 lg:px-8 py-4 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+      <main className="w-full px-4 sm:px-6 lg:px-8 py-4 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 lg:gap-8">
         {/* Sidebar */}
         <aside className="space-y-4">
           <div className="hidden lg:flex gap-3">
@@ -204,80 +293,78 @@ const Home = () => {
 
           {/* Reminders */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <button
-              onClick={() => setShowReminders(!showReminders)}
-              className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <button
+                onClick={() => setShowReminders(!showReminders)}
+                className="flex items-center gap-2 text-sm font-semibold text-gray-700"
+              >
                 <Bell className="w-4 h-4 text-gray-600" />
-                <h2 className="text-sm font-semibold text-gray-700">Reminders</h2>
+                Reminders
                 {overdueReminders.length > 0 && (
                   <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full">
-                    {overdueReminders.length}
+                    {overdueReminders.length} overdue
                   </span>
                 )}
-              </div>
-              {showReminders ? (
-                <ChevronUp className="w-4 h-4 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-gray-400" />
-              )}
-            </button>
+                {showReminders ? (
+                  <ChevronUp className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                )}
+              </button>
+              <button
+                onClick={() => setShowAddReminder(true)}
+                className="flex items-center gap-1 text-sm text-green-700 hover:text-green-800 font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                New
+              </button>
+            </div>
 
             {showReminders && (
-              <div className="px-4 pb-4 space-y-2">
-                {[...overdueReminders, ...upcomingReminders].map((r) => (
-                  <div
-                    key={r.id}
-                    className={`flex items-start gap-2 p-2 border rounded-lg transition-colors ${
-                      r.isOverdue
-                        ? "bg-red-50 border-red-200"
-                        : "bg-blue-50 border-blue-200"
-                    }`}
-                  >
-                    <div
-                      className={`w-2 h-2 rounded-full mt-1 ${
-                        r.isOverdue ? "bg-red-500" : "bg-blue-500"
-                      }`}
-                    ></div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between gap-2">
-                        <span className="text-sm font-medium text-gray-900 truncate">
-                          {r.treeName}
-                        </span>
-                        <span
-                          className={`text-xs whitespace-nowrap ${
-                            r.isOverdue ? "text-red-600" : "text-blue-600"
-                          }`}
-                        >
-                          {formatDate(r.dueDate)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 mt-0.5">{r.message}</p>
-                    </div>
-                    <button
-                      onClick={() => handleCompleteReminder(r.id)}
-                      className="text-gray-400 hover:text-green-600 transition"
-                      title="Mark complete"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-
+              <div className="px-4 py-4 space-y-6">
                 {reminders.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center mt-3">
-                    No reminders yet.
-                  </p>
+                  <p className="text-sm text-gray-500 text-center">No reminders yet.</p>
                 )}
 
-                <button
-                  onClick={() => setShowAddReminder(true)}
-                  className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Reminder
-                </button>
+                {overdueReminders.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-red-600">
+                      <span>Overdue</span>
+                      <span className="text-[11px] font-medium text-red-500">
+                        {overdueReminders.length} reminder{overdueReminders.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    {overdueReminders.map((r) => (
+                      <ReminderCard
+                        key={r.id}
+                        reminder={r}
+                        formatDate={formatDate}
+                        onComplete={handleCompleteReminder}
+                        status="overdue"
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {upcomingReminders.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-blue-600">
+                      <span>Upcoming</span>
+                      <span className="text-[11px] font-medium text-blue-500">
+                        {upcomingReminders.length} reminder{upcomingReminders.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    {upcomingReminders.map((r) => (
+                      <ReminderCard
+                        key={r.id}
+                        reminder={r}
+                        formatDate={formatDate}
+                        onComplete={handleCompleteReminder}
+                        status="upcoming"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

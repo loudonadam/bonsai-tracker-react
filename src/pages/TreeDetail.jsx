@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,7 +12,15 @@ import {
   Camera,
   Trash2,
   Download,
+  Bell,
+  CheckCircle,
+  ImagePlus,
 } from 'lucide-react';
+import {
+  appendReminderToStorage,
+  loadStoredReminders,
+  removeReminderFromStorage,
+} from '../utils/reminderStorage';
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -50,7 +58,19 @@ const mockTreeData = {
     { id: 2, date: "2024-09-15", workPerformed: "Stopped fertilizing for fall color development.", girth: 15.1 },
     { id: 3, date: "2024-06-20", workPerformed: "Repotted into larger pot. Root pruning performed.", girth: 14.8 },
     { id: 4, date: "2024-03-10", workPerformed: "First pruning of the season. Wired two main branches for movement.", girth: 14.5 }
-  ]
+  ],
+  reminders: [],
+};
+
+const initialUpdateState = {
+  date: "",
+  girth: "",
+  workPerformed: "",
+  addReminder: false,
+  reminderMessage: "",
+  reminderDueDate: "",
+  photoFile: null,
+  photoPreview: null,
 };
 
 const TreeDetail = () => {
@@ -65,11 +85,7 @@ const TreeDetail = () => {
   const [newAccolade, setNewAccolade] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [newUpdate, setNewUpdate] = useState({
-    date: "",
-    girth: "",
-    workPerformed: "",
-  });
+  const [newUpdate, setNewUpdate] = useState(() => ({ ...initialUpdateState }));
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -78,6 +94,53 @@ const TreeDetail = () => {
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
+  const fileInputRef = useRef(null);
+
+  const [treeReminders, setTreeReminders] = useState(() =>
+    loadStoredReminders().filter((reminder) => reminder.treeId === mockTreeData.id)
+  );
+
+  const sortedTreeReminders = useMemo(() => {
+    return [...treeReminders].sort(
+      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+    );
+  }, [treeReminders]);
+
+  const todayStart = useMemo(() => {
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+    return base;
+  }, []);
+
+  const resetUpdateForm = () => {
+    setNewUpdate({ ...initialUpdateState });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUpdatePhotoChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setNewUpdate((prev) => ({ ...prev, photoFile: null, photoPreview: null }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setNewUpdate((prev) => ({
+        ...prev,
+        photoFile: file,
+        photoPreview: typeof reader.result === 'string' ? reader.result : null,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCompleteTreeReminder = (reminderId) => {
+    const updated = removeReminderFromStorage(reminderId);
+    setTreeReminders(updated.filter((reminder) => reminder.treeId === tree.id));
+  };
 
   const openEditModal = () => {
     setEditData({
@@ -139,7 +202,7 @@ const TreeDetail = () => {
   };
 
   const openAddUpdateModal = () => {
-    setNewUpdate({ date: "", girth: "", workPerformed: "" });
+    resetUpdateForm();
     setShowUpdateModal(true);
   };
 
@@ -148,11 +211,21 @@ const TreeDetail = () => {
       return;
     }
 
+    if (
+      newUpdate.addReminder &&
+      (!newUpdate.reminderMessage.trim() || !newUpdate.reminderDueDate)
+    ) {
+      alert('Please provide a reminder message and due date.');
+      return;
+    }
+
+    const timestamp = Date.now();
+
     setTree((prev) => ({
       ...prev,
       updates: [
         {
-          id: Date.now(),
+          id: timestamp,
           date: newUpdate.date,
           girth:
             newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
@@ -162,9 +235,34 @@ const TreeDetail = () => {
         },
         ...prev.updates,
       ],
+      photos:
+        newUpdate.photoPreview
+          ? [
+              {
+                id: timestamp + 1,
+                url: newUpdate.photoPreview,
+                date: newUpdate.date,
+                description:
+                  newUpdate.workPerformed.trim() || 'Tree update photo',
+              },
+              ...prev.photos,
+            ]
+          : prev.photos,
     }));
 
-    setNewUpdate({ date: "", girth: "", workPerformed: "" });
+    if (newUpdate.addReminder) {
+      const reminder = {
+        id: timestamp + 2,
+        treeId: tree.id,
+        treeName: tree.name,
+        message: newUpdate.reminderMessage.trim(),
+        dueDate: newUpdate.reminderDueDate,
+      };
+      const updated = appendReminderToStorage(reminder);
+      setTreeReminders(updated.filter((item) => item.treeId === tree.id));
+    }
+
+    resetUpdateForm();
     setShowUpdateModal(false);
   };
 
@@ -277,6 +375,58 @@ const TreeDetail = () => {
             <p className="text-gray-700">{update.workPerformed}</p>
           </div>
         ))}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-amber-700">
+          <Bell className="h-4 w-4" /> Follow-up reminders
+        </div>
+        {sortedTreeReminders.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No reminders have been scheduled for this tree yet.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {sortedTreeReminders.map((reminder) => {
+              const reminderDate = new Date(reminder.dueDate);
+              reminderDate.setHours(0, 0, 0, 0);
+              const isOverdue = reminderDate.getTime() < todayStart.getTime();
+              return (
+                <li
+                  key={reminder.id}
+                  className={`flex flex-col gap-2 rounded-lg border p-3 text-sm shadow-sm ${
+                    isOverdue
+                      ? 'border-red-200 bg-red-50/60'
+                      : 'border-blue-200 bg-blue-50/60'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">
+                      {reminder.message}
+                    </span>
+                    <span
+                      className={`text-xs font-semibold uppercase tracking-wide ${
+                        isOverdue ? 'text-red-600' : 'text-blue-600'
+                      }`}
+                    >
+                      {formatDate(reminder.dueDate)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>Linked tree: {reminder.treeName}</span>
+                    <button
+                      onClick={() => handleCompleteTreeReminder(reminder.id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-green-200 px-2 py-1 font-semibold text-green-700 transition hover:bg-green-50 hover:text-green-800"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Done
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -439,7 +589,10 @@ const TreeDetail = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-xl shadow-lg max-w-lg w-full p-6 relative space-y-4">
             <button
-              onClick={() => setShowUpdateModal(false)}
+              onClick={() => {
+                resetUpdateForm();
+                setShowUpdateModal(false);
+              }}
               className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
             >
               <X className="w-5 h-5" />
@@ -479,9 +632,97 @@ const TreeDetail = () => {
               />
             </label>
 
+            <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Add follow-up reminder</p>
+                <p className="text-xs text-gray-500">
+                  Capture a reminder that will appear on your home dashboard.
+                </p>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={newUpdate.addReminder}
+                  onChange={(e) =>
+                    setNewUpdate((prev) => ({
+                      ...prev,
+                      addReminder: e.target.checked,
+                      reminderMessage: e.target.checked ? prev.reminderMessage : "",
+                      reminderDueDate: e.target.checked ? prev.reminderDueDate : "",
+                    }))
+                  }
+                  className="peer sr-only"
+                />
+                <div className="peer h-5 w-10 rounded-full bg-gray-300 transition peer-checked:bg-green-500"></div>
+                <div className="absolute left-0 top-0 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
+              </label>
+            </div>
+
+            {newUpdate.addReminder && (
+              <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Reminder Message
+                  <input
+                    type="text"
+                    value={newUpdate.reminderMessage}
+                    onChange={(e) =>
+                      setNewUpdate((prev) => ({
+                        ...prev,
+                        reminderMessage: e.target.value,
+                      }))
+                    }
+                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                    placeholder="e.g. Check wiring tension"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Reminder Due Date
+                  <input
+                    type="date"
+                    value={newUpdate.reminderDueDate}
+                    onChange={(e) =>
+                      setNewUpdate((prev) => ({
+                        ...prev,
+                        reminderDueDate: e.target.value,
+                      }))
+                    }
+                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="grid gap-2">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                  <ImagePlus className="h-4 w-4" />
+                  Attach Photo (optional)
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUpdatePhotoChange}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-green-700"
+                />
+              </label>
+              {newUpdate.photoPreview && (
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <img
+                    src={newUpdate.photoPreview}
+                    alt="Preview of uploaded update"
+                    className="h-40 w-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setShowUpdateModal(false)}
+                onClick={() => {
+                  resetUpdateForm();
+                  setShowUpdateModal(false);
+                }}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
               >
                 Cancel
