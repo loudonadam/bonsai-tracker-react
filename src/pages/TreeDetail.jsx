@@ -513,7 +513,7 @@ const TreeDetail = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3 sm:px-8 lg:px-10">
+        <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between px-6 py-3 sm:px-8 lg:px-10">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/')}
@@ -543,7 +543,7 @@ const TreeDetail = () => {
         <div className="h-1 bg-green-600"></div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[1fr_350px] lg:px-10">
+      <main className="mx-auto grid w-full max-w-[1500px] grid-cols-1 gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[1fr_350px] lg:px-10">
         <div>
           <div className="relative bg-green-50 rounded-lg shadow-sm p-6 mb-6 border border-green-100">
             {/* Development Stage Badge */}
