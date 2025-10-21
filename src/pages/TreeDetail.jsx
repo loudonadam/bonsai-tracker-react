@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -82,10 +82,14 @@ const TreeDetail = () => {
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
   const [accolades, setAccolades] = useState([]);
   const [showAccoladeModal, setShowAccoladeModal] = useState(false);
-  const [newAccolade, setNewAccolade] = useState("");
+  const [newAccolade, setNewAccolade] = useState({ title: "", photoId: "" });
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [newUpdate, setNewUpdate] = useState(() => ({ ...initialUpdateState }));
+  const [newUpdate, setNewUpdate] = useState({
+    date: "",
+    girth: "",
+    workPerformed: "",
+  });
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -94,53 +98,6 @@ const TreeDetail = () => {
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
-  const fileInputRef = useRef(null);
-
-  const [treeReminders, setTreeReminders] = useState(() =>
-    loadStoredReminders().filter((reminder) => reminder.treeId === mockTreeData.id)
-  );
-
-  const sortedTreeReminders = useMemo(() => {
-    return [...treeReminders].sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
-  }, [treeReminders]);
-
-  const todayStart = useMemo(() => {
-    const base = new Date();
-    base.setHours(0, 0, 0, 0);
-    return base;
-  }, []);
-
-  const resetUpdateForm = () => {
-    setNewUpdate({ ...initialUpdateState });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleUpdatePhotoChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setNewUpdate((prev) => ({ ...prev, photoFile: null, photoPreview: null }));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setNewUpdate((prev) => ({
-        ...prev,
-        photoFile: file,
-        photoPreview: typeof reader.result === 'string' ? reader.result : null,
-      }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleCompleteTreeReminder = (reminderId) => {
-    const updated = removeReminderFromStorage(reminderId);
-    setTreeReminders(updated.filter((reminder) => reminder.treeId === tree.id));
-  };
 
   const openEditModal = () => {
     setEditData({
@@ -202,11 +159,11 @@ const TreeDetail = () => {
   };
 
   const openAddUpdateModal = () => {
-    resetUpdateForm();
+    setNewUpdate({ date: "", girth: "", workPerformed: "" });
     setShowUpdateModal(true);
   };
 
-  const handleAddUpdate = () => {
+  const handleSaveUpdate = () => {
     if (!newUpdate.date || !newUpdate.workPerformed.trim()) {
       return;
     }
@@ -225,7 +182,7 @@ const TreeDetail = () => {
       ...prev,
       updates: [
         {
-          id: timestamp,
+          id: Date.now(),
           date: newUpdate.date,
           girth:
             newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
@@ -235,34 +192,9 @@ const TreeDetail = () => {
         },
         ...prev.updates,
       ],
-      photos:
-        newUpdate.photoPreview
-          ? [
-              {
-                id: timestamp + 1,
-                url: newUpdate.photoPreview,
-                date: newUpdate.date,
-                description:
-                  newUpdate.workPerformed.trim() || 'Tree update photo',
-              },
-              ...prev.photos,
-            ]
-          : prev.photos,
     }));
 
-    if (newUpdate.addReminder) {
-      const reminder = {
-        id: timestamp + 2,
-        treeId: tree.id,
-        treeName: tree.name,
-        message: newUpdate.reminderMessage.trim(),
-        dueDate: newUpdate.reminderDueDate,
-      };
-      const updated = appendReminderToStorage(reminder);
-      setTreeReminders(updated.filter((item) => item.treeId === tree.id));
-    }
-
-    resetUpdateForm();
+    setNewUpdate({ date: "", girth: "", workPerformed: "" });
     setShowUpdateModal(false);
   };
 
@@ -368,65 +300,16 @@ const TreeDetail = () => {
                   </div>
                 )}
               </div>
-              <button className="text-gray-400 hover:text-gray-600">
+              <button
+                onClick={() => openEditUpdateModal(update)}
+                className="text-gray-400 hover:text-gray-600"
+              >
                 <Edit className="w-4 h-4" />
               </button>
             </div>
             <p className="text-gray-700">{update.workPerformed}</p>
           </div>
         ))}
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-amber-700">
-          <Bell className="h-4 w-4" /> Follow-up reminders
-        </div>
-        {sortedTreeReminders.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No reminders have been scheduled for this tree yet.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {sortedTreeReminders.map((reminder) => {
-              const reminderDate = new Date(reminder.dueDate);
-              reminderDate.setHours(0, 0, 0, 0);
-              const isOverdue = reminderDate.getTime() < todayStart.getTime();
-              return (
-                <li
-                  key={reminder.id}
-                  className={`flex flex-col gap-2 rounded-lg border p-3 text-sm shadow-sm ${
-                    isOverdue
-                      ? 'border-red-200 bg-red-50/60'
-                      : 'border-blue-200 bg-blue-50/60'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900">
-                      {reminder.message}
-                    </span>
-                    <span
-                      className={`text-xs font-semibold uppercase tracking-wide ${
-                        isOverdue ? 'text-red-600' : 'text-blue-600'
-                      }`}
-                    >
-                      {formatDate(reminder.dueDate)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-gray-600">
-                    <span>Linked tree: {reminder.treeName}</span>
-                    <button
-                      onClick={() => handleCompleteTreeReminder(reminder.id)}
-                      className="inline-flex items-center gap-1 rounded-full border border-green-200 px-2 py-1 font-semibold text-green-700 transition hover:bg-green-50 hover:text-green-800"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      Done
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
     </div>
   );
@@ -436,7 +319,7 @@ const TreeDetail = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="w-full px-8 sm:px-10 lg:px-12 py-3 flex justify-between items-center">
+        <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between px-6 py-3 sm:px-8 lg:px-10">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/')}
@@ -466,7 +349,7 @@ const TreeDetail = () => {
         <div className="h-1 bg-green-600"></div>
       </header>
 
-      <main className="w-full px-8 sm:px-10 lg:px-12 py-8 grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
+      <main className="mx-auto grid w-full max-w-[1500px] grid-cols-1 gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[1fr_350px] lg:px-10">
         <div>
           <div className="relative bg-green-50 rounded-lg shadow-sm p-6 mb-6 border border-green-100">
             {/* Development Stage Badge */}
@@ -551,7 +434,10 @@ const TreeDetail = () => {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-800">Accolades</h3>
               <button
-                onClick={() => setShowAccoladeModal(true)}
+                onClick={() => {
+                  setNewAccolade({ title: "", photoId: "" });
+                  setShowAccoladeModal(true);
+                }}
                 className="text-gray-400 hover:text-green-600 transition flex items-center gap-1 text-sm"
               >
                 <Plus className="w-4 h-4" />
@@ -560,23 +446,53 @@ const TreeDetail = () => {
             </div>
 
             {accolades.length > 0 ? (
-              <ul className="space-y-2 text-sm text-gray-700">
-                {accolades.map((a, idx) => (
-                  <li
-                    key={idx}
-                    className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 flex justify-between items-center"
-                  >
-                    <span>{a}</span>
-                    <button
-                      onClick={() =>
-                        setAccolades((prev) => prev.filter((_, i) => i !== idx))
-                      }
-                      className="text-gray-400 hover:text-red-600"
+              <ul className="space-y-3 text-sm text-gray-700">
+                {accolades.map((accolade, idx) => {
+                  const linkedPhoto = accolade.photoId
+                    ? tree.photos.find((photo) => String(photo.id) === String(accolade.photoId))
+                    : null;
+
+                  return (
+                    <li
+                      key={idx}
+                      className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </li>
-                ))}
+                      <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
+                        {linkedPhoto ? (
+                          linkedPhoto.url ? (
+                            <img
+                              src={linkedPhoto.url}
+                              alt={linkedPhoto.description || 'Linked accolade photo'}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <Camera className="h-6 w-6 text-gray-400" />
+                          )
+                        ) : (
+                          <Camera className="h-6 w-6 text-gray-300" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800">{accolade.title}</p>
+                        <p className="text-xs text-gray-500">
+                          {linkedPhoto
+                            ? `${formatDate(linkedPhoto.date)}${
+                                linkedPhoto.description ? ` • ${linkedPhoto.description}` : ''
+                              }`
+                            : 'No photo linked'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          setAccolades((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="text-gray-400 transition hover:text-red-600"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="text-sm text-gray-400 italic">No accolades yet</p>
@@ -597,7 +513,9 @@ const TreeDetail = () => {
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-semibold text-gray-800">Add Tree Update</h3>
+            <h3 className="text-lg font-semibold text-gray-800">
+              {editingUpdateId ? 'Edit Tree Update' : 'Add Tree Update'}
+            </h3>
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Date
@@ -728,10 +646,10 @@ const TreeDetail = () => {
                 Cancel
               </button>
               <button
-                onClick={handleAddUpdate}
+                onClick={handleSaveUpdate}
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
               >
-                Save Update
+                {editingUpdateId ? 'Save Changes' : 'Save Update'}
               </button>
             </div>
           </div>
@@ -741,22 +659,71 @@ const TreeDetail = () => {
       {/* Add Accolade Modal */}
       {showAccoladeModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative space-y-4">
             <button
               onClick={() => setShowAccoladeModal(false)}
               className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Add Accolade</h3>
-            <input
-              type="text"
-              value={newAccolade}
-              onChange={(e) => setNewAccolade(e.target.value)}
-              placeholder="e.g. Best in Show - 2025 TBS Fall Expo"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-            />
-            <div className="flex justify-end gap-3 mt-6">
+            <h3 className="text-lg font-semibold text-gray-800">Add Accolade</h3>
+
+            <div className="space-y-4">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Accolade Title
+                <input
+                  type="text"
+                  value={newAccolade.title}
+                  onChange={(e) =>
+                    setNewAccolade((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  placeholder="e.g. Best in Show - 2025 TBS Fall Expo"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Link Photo (optional)
+                <select
+                  value={newAccolade.photoId}
+                  onChange={(e) =>
+                    setNewAccolade((prev) => ({ ...prev, photoId: e.target.value }))
+                  }
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                >
+                  <option value="">No photo</option>
+                  {tree.photos.map((photo) => (
+                    <option key={photo.id} value={String(photo.id)}>
+                      {photo.description || `Photo from ${formatDate(photo.date)}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedAccoladePhoto && (
+                <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md bg-white">
+                    {selectedAccoladePhoto.url ? (
+                      <img
+                        src={selectedAccoladePhoto.url}
+                        alt={selectedAccoladePhoto.description || 'Selected accolade photo'}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Camera className="h-7 w-7 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="text-sm">
+                    <p className="font-medium text-gray-800">
+                      {selectedAccoladePhoto.description || 'Tree photo'}
+                    </p>
+                    <p className="text-xs text-gray-500">{formatDate(selectedAccoladePhoto.date)}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowAccoladeModal(false)}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
@@ -765,13 +732,20 @@ const TreeDetail = () => {
               </button>
               <button
                 onClick={() => {
-                  if (newAccolade.trim()) {
-                    setAccolades((prev) => [...prev, newAccolade.trim()]);
-                    setNewAccolade("");
+                  if (newAccolade.title.trim()) {
+                    setAccolades((prev) => [
+                      ...prev,
+                      {
+                        title: newAccolade.title.trim(),
+                        photoId: newAccolade.photoId ? String(newAccolade.photoId) : null,
+                      },
+                    ]);
+                    setNewAccolade({ title: "", photoId: "" });
                     setShowAccoladeModal(false);
                   }
                 }}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition disabled:cursor-not-allowed disabled:bg-green-300"
+                disabled={!newAccolade.title.trim()}
               >
                 Add
               </button>

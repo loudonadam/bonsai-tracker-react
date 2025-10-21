@@ -131,7 +131,10 @@ const Home = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((date - today) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+    if (diffDays < 0) {
+      const diffWeeks = Math.ceil(Math.abs(diffDays) / 7);
+      return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} overdue`;
+    }
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Tomorrow";
     if (diffDays <= 7) return `In ${diffDays} days`;
