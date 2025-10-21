@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import {
+  DEVELOPMENT_STAGE_OPTIONS,
+  DEFAULT_STAGE_VALUE,
+} from "../utils/developmentStages";
 
 const AddTreeModal = ({ show, onClose, onSave }) => {
   const [newTree, setNewTree] = useState({
@@ -10,6 +14,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
     trunkWidth: "",
     notes: "",
     photo: null,
+    developmentStage: DEFAULT_STAGE_VALUE,
   });
 
   const [preview, setPreview] = useState(null);
@@ -25,6 +30,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
         trunkWidth: "",
         notes: "",
         photo: null,
+        developmentStage: DEFAULT_STAGE_VALUE,
       });
       setPreview(null);
       setError("");
@@ -51,6 +57,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
       id: Date.now(),
       currentGirth: 0,
       lastUpdate: newTree.acquisitionDate,
+      developmentStage: newTree.developmentStage,
     });
   };
 
@@ -153,6 +160,29 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
               placeholder="e.g. 3.5"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
             />
+          </div>
+
+          {/* Development Stage */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Development Stage
+            </label>
+            <select
+              value={newTree.developmentStage}
+              onChange={(event) =>
+                setNewTree({
+                  ...newTree,
+                  developmentStage: event.target.value,
+                })
+              }
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent bg-white text-gray-700"
+            >
+              {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Notes */}

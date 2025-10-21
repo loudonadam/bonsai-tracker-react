@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -12,15 +12,19 @@ import {
   Camera,
   Trash2,
   Download,
-  Bell,
   CheckCircle,
   ImagePlus,
-} from 'lucide-react';
+  ChevronDown,
+} from "lucide-react";
 import {
   appendReminderToStorage,
   loadStoredReminders,
-  removeReminderFromStorage,
-} from '../utils/reminderStorage';
+} from "../utils/reminderStorage";
+import {
+  DEVELOPMENT_STAGE_OPTIONS,
+  DEFAULT_STAGE_VALUE,
+  getStageMeta,
+} from "../utils/developmentStages";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -46,7 +50,7 @@ const mockTreeData = {
   acquisitionDate: "2018-04-20",
   currentGirth: 15.3,
   notes: "Beautiful red leaves in fall. Received as a gift from sensei. Responds well to pruning. Prefers partial shade in summer.",
-  developmentStage: "Refinement",
+  developmentStage: "refinement",
   photos: [
     { id: 1, url: null, date: "2024-12-01", description: "Winter structure visible" },
     { id: 2, url: null, date: "2024-09-15", description: "Full autumn color display" },
@@ -73,6 +77,13 @@ const initialUpdateState = {
   photoPreview: null,
 };
 
+const initialAccoladeState = {
+  title: "",
+  photoId: "",
+  uploadPreview: "",
+  uploadFile: null,
+};
+
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -82,14 +93,12 @@ const TreeDetail = () => {
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
   const [accolades, setAccolades] = useState([]);
   const [showAccoladeModal, setShowAccoladeModal] = useState(false);
-  const [newAccolade, setNewAccolade] = useState({ title: "", photoId: "" });
+  const [newAccolade, setNewAccolade] = useState(initialAccoladeState);
+  const [editingAccoladeIndex, setEditingAccoladeIndex] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [newUpdate, setNewUpdate] = useState({
-    date: "",
-    girth: "",
-    workPerformed: "",
-  });
+  const [newUpdate, setNewUpdate] = useState(initialUpdateState);
+  const [editingUpdateId, setEditingUpdateId] = useState(null);
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -98,6 +107,54 @@ const TreeDetail = () => {
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
+  const [, setReminders] = useState(() => loadStoredReminders());
+  const fileInputRef = useRef(null);
+  const accoladeFileInputRef = useRef(null);
+  const stageMenuRef = useRef(null);
+  const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
+
+  const stageMeta = useMemo(
+    () => getStageMeta(tree.developmentStage),
+    [tree.developmentStage]
+  );
+
+  const selectedAccoladePhoto = useMemo(() => {
+    if (newAccolade.uploadPreview) {
+      return {
+        url: newAccolade.uploadPreview,
+        description: "Uploaded accolade photo",
+        date: null,
+      };
+    }
+
+    if (newAccolade.photoId) {
+      return (
+        tree.photos.find(
+          (photo) => String(photo.id) === String(newAccolade.photoId)
+        ) || null
+      );
+    }
+
+    return null;
+  }, [newAccolade.photoId, newAccolade.uploadPreview, tree.photos]);
+
+  useEffect(() => {
+    if (!isStageMenuOpen) return;
+
+    const handleClickAway = (event) => {
+      if (
+        stageMenuRef.current &&
+        !stageMenuRef.current.contains(event.target)
+      ) {
+        setIsStageMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickAway);
+    return () => {
+      document.removeEventListener("mousedown", handleClickAway);
+    };
+  }, [isStageMenuOpen]);
 
   const openEditModal = () => {
     setEditData({
@@ -105,7 +162,7 @@ const TreeDetail = () => {
       species: tree.species,
       acquisitionDate: tree.acquisitionDate,
       currentGirth: tree.currentGirth?.toString() ?? "",
-      developmentStage: tree.developmentStage ?? "",
+      developmentStage: tree.developmentStage ?? DEFAULT_STAGE_VALUE,
       notes: tree.notes ?? "",
     });
     setShowEditModal(true);
@@ -121,7 +178,7 @@ const TreeDetail = () => {
         editData.currentGirth.trim() !== "" && !Number.isNaN(Number(editData.currentGirth))
           ? Number(editData.currentGirth)
           : prev.currentGirth,
-      developmentStage: editData.developmentStage.trim() || prev.developmentStage,
+      developmentStage: editData.developmentStage || prev.developmentStage,
       notes: editData.notes,
     }));
     setShowEditModal(false);
@@ -158,9 +215,156 @@ const TreeDetail = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleStageChange = (stageValue) => {
+    setTree((prev) => ({
+      ...prev,
+      developmentStage: stageValue,
+    }));
+    setEditData((prev) => ({
+      ...prev,
+      developmentStage: stageValue,
+    }));
+    setIsStageMenuOpen(false);
+  };
+
+  const openAccoladeModal = (index = null) => {
+    if (typeof index === "number" && accolades[index]) {
+      const accolade = accolades[index];
+      setNewAccolade({
+        title: accolade.title,
+        photoId: accolade.photoId ? String(accolade.photoId) : "",
+        uploadPreview: accolade.uploadedPhoto || "",
+        uploadFile: null,
+      });
+      setEditingAccoladeIndex(index);
+    } else {
+      setNewAccolade(initialAccoladeState);
+      setEditingAccoladeIndex(null);
+    }
+
+    if (accoladeFileInputRef.current) {
+      accoladeFileInputRef.current.value = "";
+    }
+
+    setShowAccoladeModal(true);
+  };
+
+  const handleAccoladePhotoChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setNewAccolade((prev) => ({
+        ...prev,
+        uploadPreview:
+          typeof reader.result === "string" ? reader.result : "",
+        uploadFile: file,
+        photoId: "",
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearAccoladePhoto = () => {
+    setNewAccolade((prev) => ({
+      ...prev,
+      uploadPreview: "",
+      uploadFile: null,
+      photoId: "",
+    }));
+    if (accoladeFileInputRef.current) {
+      accoladeFileInputRef.current.value = "";
+    }
+  };
+
+  const handleAccoladeSave = () => {
+    if (!newAccolade.title.trim()) {
+      return;
+    }
+
+    const entry = {
+      title: newAccolade.title.trim(),
+      photoId: newAccolade.photoId ? String(newAccolade.photoId) : null,
+      uploadedPhoto: newAccolade.uploadPreview || null,
+    };
+
+    if (editingAccoladeIndex !== null) {
+      setAccolades((prev) =>
+        prev.map((item, idx) => (idx === editingAccoladeIndex ? entry : item))
+      );
+    } else {
+      setAccolades((prev) => [...prev, entry]);
+    }
+
+    setNewAccolade(initialAccoladeState);
+    setEditingAccoladeIndex(null);
+    if (accoladeFileInputRef.current) {
+      accoladeFileInputRef.current.value = "";
+    }
+    setShowAccoladeModal(false);
+  };
+
+  const handleRemoveAccolade = (index) => {
+    setAccolades((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const resetUpdateForm = () => {
+    setNewUpdate(initialUpdateState);
+    setEditingUpdateId(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const openAddUpdateModal = () => {
-    setNewUpdate({ date: "", girth: "", workPerformed: "" });
+    resetUpdateForm();
     setShowUpdateModal(true);
+  };
+
+  const openEditUpdateModal = (update) => {
+    setNewUpdate({
+      ...initialUpdateState,
+      date: update.date,
+      girth:
+        typeof update.girth === "number"
+          ? update.girth.toString()
+          : update.girth ?? "",
+      workPerformed: update.workPerformed ?? "",
+    });
+    setEditingUpdateId(update.id);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setShowUpdateModal(true);
+  };
+
+  const handleUpdatePhotoChange = (event) => {
+    if (editingUpdateId) {
+      return;
+    }
+
+    const file = event.target.files?.[0];
+    if (!file) {
+      setNewUpdate((prev) => ({
+        ...prev,
+        photoFile: null,
+        photoPreview: null,
+      }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setNewUpdate((prev) => ({
+        ...prev,
+        photoFile: file,
+        photoPreview: typeof reader.result === "string" ? reader.result : null,
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveUpdate = () => {
@@ -169,32 +373,75 @@ const TreeDetail = () => {
     }
 
     if (
+      !editingUpdateId &&
       newUpdate.addReminder &&
       (!newUpdate.reminderMessage.trim() || !newUpdate.reminderDueDate)
     ) {
-      alert('Please provide a reminder message and due date.');
+      alert("Please provide a reminder message and due date.");
       return;
     }
 
-    const timestamp = Date.now();
+    const parsedGirth =
+      newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
+        ? Number(newUpdate.girth)
+        : null;
+    const trimmedWork = newUpdate.workPerformed.trim();
 
-    setTree((prev) => ({
-      ...prev,
-      updates: [
-        {
+    if (editingUpdateId) {
+      setTree((prev) => ({
+        ...prev,
+        updates: prev.updates.map((update) => {
+          if (update.id !== editingUpdateId) {
+            return update;
+          }
+
+          return {
+            ...update,
+            date: newUpdate.date,
+            girth:
+              parsedGirth !== null
+                ? parsedGirth
+                : update.girth,
+            workPerformed: trimmedWork,
+          };
+        }),
+      }));
+    } else {
+      setTree((prev) => {
+        const fallbackGirth =
+          parsedGirth !== null
+            ? parsedGirth
+            : typeof prev.updates[0]?.girth === "number"
+            ? prev.updates[0].girth
+            : prev.currentGirth;
+
+        const entry = {
           id: Date.now(),
           date: newUpdate.date,
-          girth:
-            newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
-              ? Number(newUpdate.girth)
-              : prev.updates[0]?.girth ?? prev.currentGirth,
-          workPerformed: newUpdate.workPerformed.trim(),
-        },
-        ...prev.updates,
-      ],
-    }));
+          girth: fallbackGirth,
+          workPerformed: trimmedWork,
+        };
 
-    setNewUpdate({ date: "", girth: "", workPerformed: "" });
+        return {
+          ...prev,
+          updates: [entry, ...prev.updates],
+        };
+      });
+
+      if (newUpdate.addReminder) {
+        const reminder = {
+          id: Date.now(),
+          treeId: tree.id,
+          treeName: tree.name,
+          message: newUpdate.reminderMessage.trim(),
+          dueDate: newUpdate.reminderDueDate,
+        };
+        const updatedReminders = appendReminderToStorage(reminder);
+        setReminders(updatedReminders);
+      }
+    }
+
+    resetUpdateForm();
     setShowUpdateModal(false);
   };
 
@@ -316,7 +563,7 @@ const TreeDetail = () => {
 
   // ─── Render ───────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pl-2 pr-0 sm:pl-4">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between px-6 py-3 sm:px-8 lg:px-10">
@@ -353,10 +600,56 @@ const TreeDetail = () => {
         <div>
           <div className="relative bg-green-50 rounded-lg shadow-sm p-6 mb-6 border border-green-100">
             {/* Development Stage Badge */}
-            <div className="absolute top-4 right-4">
-              <span className="px-3 py-1 text-sm rounded-full bg-green-100 text-green-700 border border-green-200">
-                {tree.developmentStage}
-              </span>
+            <div className="absolute top-4 right-4 text-right">
+              <div className="relative inline-flex" ref={stageMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsStageMenuOpen((prev) => !prev)}
+                  className="focus:outline-none"
+                >
+                  <span
+                    className={`flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold shadow-sm transition ${stageMeta.badgeClasses}`}
+                    title={stageMeta.label}
+                  >
+                    <span className={`h-2.5 w-2.5 rounded-full ${stageMeta.dotClasses}`} />
+                    {stageMeta.shortLabel}
+                    <ChevronDown className="h-4 w-4 opacity-80" />
+                  </span>
+                </button>
+
+                {isStageMenuOpen && (
+                  <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                    <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Select growth stage
+                    </p>
+                    <ul className="py-2">
+                      {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
+                        <li key={option.value}>
+                          <button
+                            type="button"
+                            onClick={() => handleStageChange(option.value)}
+                            className={`flex w-full items-center justify-between px-4 py-2 text-sm transition hover:bg-gray-50 ${
+                              option.value === stageMeta.value
+                                ? "text-gray-900"
+                                : "text-gray-600"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${option.dotClasses}`}
+                              />
+                              {option.label}
+                            </span>
+                            {option.value === stageMeta.value && (
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -434,10 +727,7 @@ const TreeDetail = () => {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-800">Accolades</h3>
               <button
-                onClick={() => {
-                  setNewAccolade({ title: "", photoId: "" });
-                  setShowAccoladeModal(true);
-                }}
+                onClick={() => openAccoladeModal()}
                 className="text-gray-400 hover:text-green-600 transition flex items-center gap-1 text-sm"
               >
                 <Plus className="w-4 h-4" />
@@ -451,6 +741,10 @@ const TreeDetail = () => {
                   const linkedPhoto = accolade.photoId
                     ? tree.photos.find((photo) => String(photo.id) === String(accolade.photoId))
                     : null;
+                  const hasUploadedPhoto = Boolean(accolade.uploadedPhoto);
+                  const displayPhoto = hasUploadedPhoto
+                    ? { url: accolade.uploadedPhoto }
+                    : linkedPhoto;
 
                   return (
                     <li
@@ -458,11 +752,15 @@ const TreeDetail = () => {
                       className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
                     >
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
-                        {linkedPhoto ? (
-                          linkedPhoto.url ? (
+                        {displayPhoto ? (
+                          displayPhoto.url ? (
                             <img
-                              src={linkedPhoto.url}
-                              alt={linkedPhoto.description || 'Linked accolade photo'}
+                              src={displayPhoto.url}
+                              alt={
+                                hasUploadedPhoto
+                                  ? 'Accolade photo'
+                                  : linkedPhoto?.description || 'Linked accolade photo'
+                              }
                               className="h-full w-full object-cover"
                             />
                           ) : (
@@ -475,21 +773,33 @@ const TreeDetail = () => {
                       <div className="flex-1">
                         <p className="font-medium text-gray-800">{accolade.title}</p>
                         <p className="text-xs text-gray-500">
-                          {linkedPhoto
+                          {hasUploadedPhoto
+                            ? 'Uploaded photo attached'
+                            : linkedPhoto
                             ? `${formatDate(linkedPhoto.date)}${
                                 linkedPhoto.description ? ` • ${linkedPhoto.description}` : ''
                               }`
-                            : 'No photo linked'}
+                            : 'No photo attached'}
                         </p>
                       </div>
-                      <button
-                        onClick={() =>
-                          setAccolades((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        className="text-gray-400 transition hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openAccoladeModal(idx)}
+                          className="text-gray-400 transition hover:text-green-600"
+                          aria-label="Edit accolade"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAccolade(idx)}
+                          className="text-gray-400 transition hover:text-red-600"
+                          aria-label="Delete accolade"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -550,90 +860,94 @@ const TreeDetail = () => {
               />
             </label>
 
-            <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Add follow-up reminder</p>
-                <p className="text-xs text-gray-500">
-                  Capture a reminder that will appear on your home dashboard.
-                </p>
-              </div>
-              <label className="relative inline-flex cursor-pointer items-center">
-                <input
-                  type="checkbox"
-                  checked={newUpdate.addReminder}
-                  onChange={(e) =>
-                    setNewUpdate((prev) => ({
-                      ...prev,
-                      addReminder: e.target.checked,
-                      reminderMessage: e.target.checked ? prev.reminderMessage : "",
-                      reminderDueDate: e.target.checked ? prev.reminderDueDate : "",
-                    }))
-                  }
-                  className="peer sr-only"
-                />
-                <div className="peer h-5 w-10 rounded-full bg-gray-300 transition peer-checked:bg-green-500"></div>
-                <div className="absolute left-0 top-0 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
-              </label>
-            </div>
-
-            {newUpdate.addReminder && (
-              <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Reminder Message
-                  <input
-                    type="text"
-                    value={newUpdate.reminderMessage}
-                    onChange={(e) =>
-                      setNewUpdate((prev) => ({
-                        ...prev,
-                        reminderMessage: e.target.value,
-                      }))
-                    }
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-                    placeholder="e.g. Check wiring tension"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Reminder Due Date
-                  <input
-                    type="date"
-                    value={newUpdate.reminderDueDate}
-                    onChange={(e) =>
-                      setNewUpdate((prev) => ({
-                        ...prev,
-                        reminderDueDate: e.target.value,
-                      }))
-                    }
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-                  />
-                </label>
-              </div>
-            )}
-
-            <div className="grid gap-2">
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                <span className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                  <ImagePlus className="h-4 w-4" />
-                  Attach Photo (optional)
-                </span>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleUpdatePhotoChange}
-                  className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-green-700"
-                />
-              </label>
-              {newUpdate.photoPreview && (
-                <div className="overflow-hidden rounded-lg border border-gray-200">
-                  <img
-                    src={newUpdate.photoPreview}
-                    alt="Preview of uploaded update"
-                    className="h-40 w-full object-cover"
-                  />
+            {!editingUpdateId && (
+              <>
+                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Add follow-up reminder</p>
+                    <p className="text-xs text-gray-500">
+                      Capture a reminder that will appear on your home dashboard.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={newUpdate.addReminder}
+                      onChange={(e) =>
+                        setNewUpdate((prev) => ({
+                          ...prev,
+                          addReminder: e.target.checked,
+                          reminderMessage: e.target.checked ? prev.reminderMessage : "",
+                          reminderDueDate: e.target.checked ? prev.reminderDueDate : "",
+                        }))
+                      }
+                      className="peer sr-only"
+                    />
+                    <div className="peer h-5 w-10 rounded-full bg-gray-300 transition peer-checked:bg-green-500"></div>
+                    <div className="absolute left-0 top-0 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
+                  </label>
                 </div>
-              )}
-            </div>
+
+                {newUpdate.addReminder && (
+                  <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <label className="flex flex-col gap-1 text-sm text-gray-700">
+                      Reminder Message
+                      <input
+                        type="text"
+                        value={newUpdate.reminderMessage}
+                        onChange={(e) =>
+                          setNewUpdate((prev) => ({
+                            ...prev,
+                            reminderMessage: e.target.value,
+                          }))
+                        }
+                        className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                        placeholder="e.g. Check wiring tension"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm text-gray-700">
+                      Reminder Due Date
+                      <input
+                        type="date"
+                        value={newUpdate.reminderDueDate}
+                        onChange={(e) =>
+                          setNewUpdate((prev) => ({
+                            ...prev,
+                            reminderDueDate: e.target.value,
+                          }))
+                        }
+                        className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="grid gap-2">
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                      <ImagePlus className="h-4 w-4" />
+                      Attach Photo (optional)
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUpdatePhotoChange}
+                      className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-green-700"
+                    />
+                  </label>
+                  {newUpdate.photoPreview && (
+                    <div className="overflow-hidden rounded-lg border border-gray-200">
+                      <img
+                        src={newUpdate.photoPreview}
+                        alt="Preview of uploaded update"
+                        className="h-40 w-full object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -661,12 +975,21 @@ const TreeDetail = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative space-y-4">
             <button
-              onClick={() => setShowAccoladeModal(false)}
+              onClick={() => {
+                setShowAccoladeModal(false);
+                setNewAccolade(initialAccoladeState);
+                setEditingAccoladeIndex(null);
+                if (accoladeFileInputRef.current) {
+                  accoladeFileInputRef.current.value = "";
+                }
+              }}
               className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-semibold text-gray-800">Add Accolade</h3>
+            <h3 className="text-lg font-semibold text-gray-800">
+              {editingAccoladeIndex !== null ? 'Edit Accolade' : 'Add Accolade'}
+            </h3>
 
             <div className="space-y-4">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -687,7 +1010,12 @@ const TreeDetail = () => {
                 <select
                   value={newAccolade.photoId}
                   onChange={(e) =>
-                    setNewAccolade((prev) => ({ ...prev, photoId: e.target.value }))
+                    setNewAccolade((prev) => ({
+                      ...prev,
+                      photoId: e.target.value,
+                      uploadPreview: e.target.value ? "" : prev.uploadPreview,
+                      uploadFile: e.target.value ? null : prev.uploadFile,
+                    }))
                   }
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
                 >
@@ -698,6 +1026,20 @@ const TreeDetail = () => {
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Upload Photo (optional)
+                <input
+                  ref={accoladeFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAccoladePhotoChange}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-green-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-green-700"
+                />
+                <span className="text-xs text-gray-500">
+                  Attach a photo directly if you don't want to link to an existing tree image.
+                </span>
               </label>
 
               {selectedAccoladePhoto && (
@@ -715,39 +1057,51 @@ const TreeDetail = () => {
                   </div>
                   <div className="text-sm">
                     <p className="font-medium text-gray-800">
-                      {selectedAccoladePhoto.description || 'Tree photo'}
+                      {newAccolade.uploadPreview
+                        ? 'Uploaded accolade photo'
+                        : selectedAccoladePhoto.description || 'Tree photo'}
                     </p>
-                    <p className="text-xs text-gray-500">{formatDate(selectedAccoladePhoto.date)}</p>
+                    <p className="text-xs text-gray-500">
+                      {newAccolade.uploadPreview
+                        ? 'Photo stored with this accolade'
+                        : selectedAccoladePhoto.date
+                        ? formatDate(selectedAccoladePhoto.date)
+                        : 'No date available'}
+                    </p>
                   </div>
+                  {newAccolade.uploadPreview && (
+                    <button
+                      type="button"
+                      onClick={clearAccoladePhoto}
+                      className="ml-auto text-xs font-medium text-red-500 hover:text-red-600"
+                    >
+                      Remove upload
+                    </button>
+                  )}
                 </div>
               )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setShowAccoladeModal(false)}
+                onClick={() => {
+                  setShowAccoladeModal(false);
+                  setNewAccolade(initialAccoladeState);
+                  setEditingAccoladeIndex(null);
+                  if (accoladeFileInputRef.current) {
+                    accoladeFileInputRef.current.value = "";
+                  }
+                }}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  if (newAccolade.title.trim()) {
-                    setAccolades((prev) => [
-                      ...prev,
-                      {
-                        title: newAccolade.title.trim(),
-                        photoId: newAccolade.photoId ? String(newAccolade.photoId) : null,
-                      },
-                    ]);
-                    setNewAccolade({ title: "", photoId: "" });
-                    setShowAccoladeModal(false);
-                  }
-                }}
+                onClick={handleAccoladeSave}
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition disabled:cursor-not-allowed disabled:bg-green-300"
                 disabled={!newAccolade.title.trim()}
               >
-                Add
+                {editingAccoladeIndex !== null ? 'Save Changes' : 'Add Accolade'}
               </button>
             </div>
           </div>
@@ -810,12 +1164,17 @@ const TreeDetail = () => {
 
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
                 Development Stage
-                <input
-                  type="text"
+                <select
                   value={editData.developmentStage}
                   onChange={(e) => setEditData((prev) => ({ ...prev, developmentStage: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-                />
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent bg-white text-gray-700"
+                >
+                  {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">

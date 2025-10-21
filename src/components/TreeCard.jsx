@@ -1,8 +1,9 @@
 import React from 'react';
 import { Camera, Calendar, Ruler } from 'lucide-react';
+import { getStageMeta } from '../utils/developmentStages';
 
 // TreeCard Component - displays a single bonsai tree
-const TreeCard = ({ 
+const TreeCard = ({
   tree = {
     id: 1,
     name: "Sample Bonsai",
@@ -11,7 +12,8 @@ const TreeCard = ({
     currentGirth: 12.5,
     lastUpdate: "2024-12-01",
     photoUrl: null,
-    notes: "Beautiful fall colors"
+    notes: "Beautiful fall colors",
+    developmentStage: "pre-bonsai"
   }
 }) => {
   // Calculate tree age in years
@@ -29,13 +31,24 @@ const TreeCard = ({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  const stageMeta = getStageMeta(tree.developmentStage);
+
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300 cursor-pointer">
       {/* Image Section */}
       <div className="relative h-48 bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+        <div className="absolute top-3 left-3">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold shadow-sm ${stageMeta.badgeClasses}`}
+            title={stageMeta.label}
+          >
+            <span className={`h-2 w-2 rounded-full ${stageMeta.dotClasses}`} />
+            {stageMeta.shortLabel}
+          </span>
+        </div>
         {tree.photoUrl ? (
-          <img 
-            src={tree.photoUrl} 
+          <img
+            src={tree.photoUrl}
             alt={tree.name}
             className="w-full h-full object-cover"
           />

@@ -20,6 +20,10 @@ import {
   removeReminderFromStorage,
   saveStoredReminders,
 } from "../utils/reminderStorage";
+import {
+  DEVELOPMENT_STAGE_OPTIONS,
+  DEFAULT_STAGE_VALUE,
+} from "../utils/developmentStages";
 
 // ─── Mock Data ───────────────────────────────────────────
 const initialTrees = [
@@ -31,6 +35,7 @@ const initialTrees = [
     currentGirth: 15.3,
     lastUpdate: "2024-11-15",
     notes: "Beautiful red leaves in fall. Needs repotting next spring.",
+    developmentStage: "refinement",
   },
   {
     id: 2,
@@ -40,6 +45,7 @@ const initialTrees = [
     currentGirth: 22.7,
     lastUpdate: "2024-10-28",
     notes: "Very healthy. Wire training going well.",
+    developmentStage: "show-eligible",
   },
 ];
 
@@ -52,6 +58,7 @@ const Home = () => {
   const [showReminders, setShowReminders] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [showAddTree, setShowAddTree] = useState(false);
+  const [stageFilter, setStageFilter] = useState("all");
 
   const defaultReminders = [
     {
@@ -194,15 +201,30 @@ const Home = () => {
 
   // ─── Add Tree Logic ───────────────────────────────────────────
   const handleAddTree = (treeData) => {
-    setTrees((prev) => [...prev, treeData]);
+    const stageValue =
+      treeData.developmentStage?.toLowerCase() || DEFAULT_STAGE_VALUE;
+    setTrees((prev) => [
+      ...prev,
+      {
+        ...treeData,
+        developmentStage: stageValue,
+      },
+    ]);
     setShowAddTree(false);
   };
 
-  const filteredTrees = trees.filter(
-    (tree) =>
+  const filteredTrees = trees.filter((tree) => {
+    const matchesQuery =
       tree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tree.species.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      tree.species.toLowerCase().includes(searchQuery.toLowerCase());
+    const treeStage =
+      typeof tree.developmentStage === "string"
+        ? tree.developmentStage.toLowerCase()
+        : DEFAULT_STAGE_VALUE;
+    const matchesStage = stageFilter === "all" || treeStage === stageFilter;
+
+    return matchesQuery && matchesStage;
+  });
 
   // ─── Render ───────────────────────────────────────────
   return (
@@ -375,8 +397,26 @@ const Home = () => {
 
         {/* Tree Grid */}
         <section>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 className="text-lg font-semibold text-gray-800">My Collection</h2>
+            <div className="flex items-center gap-2">
+              <label htmlFor="stage-filter" className="text-sm text-gray-600">
+                Growth stage
+              </label>
+              <select
+                id="stage-filter"
+                value={stageFilter}
+                onChange={(event) => setStageFilter(event.target.value)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200"
+              >
+                <option value="all">All stages</option>
+                {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {filteredTrees.length === 0 ? (
