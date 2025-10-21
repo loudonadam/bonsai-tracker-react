@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -85,8 +85,11 @@ const TreeDetail = () => {
   const [newAccolade, setNewAccolade] = useState({ title: "", photoId: "" });
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [newUpdate, setNewUpdate] = useState(() => ({ ...initialUpdateState }));
-  const [editingUpdateId, setEditingUpdateId] = useState(null);
+  const [newUpdate, setNewUpdate] = useState({
+    date: "",
+    girth: "",
+    workPerformed: "",
+  });
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -95,64 +98,6 @@ const TreeDetail = () => {
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
-  const fileInputRef = useRef(null);
-
-  const [treeReminders, setTreeReminders] = useState(() =>
-    loadStoredReminders().filter((reminder) => reminder.treeId === mockTreeData.id)
-  );
-
-  const sortedTreeReminders = useMemo(() => {
-    return [...treeReminders].sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
-  }, [treeReminders]);
-
-  const todayStart = useMemo(() => {
-    const base = new Date();
-    base.setHours(0, 0, 0, 0);
-    return base;
-  }, []);
-
-  const selectedAccoladePhoto = useMemo(() => {
-    if (!newAccolade.photoId) {
-      return null;
-    }
-
-    return (
-      tree.photos.find((photo) => String(photo.id) === String(newAccolade.photoId)) ?? null
-    );
-  }, [newAccolade.photoId, tree.photos]);
-
-  const resetUpdateForm = () => {
-    setNewUpdate({ ...initialUpdateState });
-    setEditingUpdateId(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleUpdatePhotoChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setNewUpdate((prev) => ({ ...prev, photoFile: null, photoPreview: null }));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setNewUpdate((prev) => ({
-        ...prev,
-        photoFile: file,
-        photoPreview: typeof reader.result === 'string' ? reader.result : null,
-      }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleCompleteTreeReminder = (reminderId) => {
-    const updated = removeReminderFromStorage(reminderId);
-    setTreeReminders(updated.filter((reminder) => reminder.treeId === tree.id));
-  };
 
   const openEditModal = () => {
     setEditData({
@@ -214,28 +159,7 @@ const TreeDetail = () => {
   };
 
   const openAddUpdateModal = () => {
-    resetUpdateForm();
-    setShowUpdateModal(true);
-  };
-
-  const openEditUpdateModal = (update) => {
-    setEditingUpdateId(update.id);
-    setNewUpdate({
-      date: update.date,
-      girth:
-        typeof update.girth === 'number' && !Number.isNaN(update.girth)
-          ? update.girth.toString()
-          : '',
-      workPerformed: update.workPerformed,
-      addReminder: false,
-      reminderMessage: '',
-      reminderDueDate: '',
-      photoFile: null,
-      photoPreview: null,
-    });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    setNewUpdate({ date: "", girth: "", workPerformed: "" });
     setShowUpdateModal(true);
   };
 
@@ -254,90 +178,23 @@ const TreeDetail = () => {
 
     const timestamp = Date.now();
 
-    if (editingUpdateId) {
-      setTree((prev) => {
-        const updatedUpdates = prev.updates.map((update) => {
-          if (update.id !== editingUpdateId) {
-            return update;
-          }
-
-          const shouldUpdateGirth =
-            newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth));
-
-          return {
-            ...update,
-            date: newUpdate.date,
-            girth: shouldUpdateGirth
+    setTree((prev) => ({
+      ...prev,
+      updates: [
+        {
+          id: Date.now(),
+          date: newUpdate.date,
+          girth:
+            newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
               ? Number(newUpdate.girth)
-              : typeof update.girth === 'number'
-                ? update.girth
-                : prev.currentGirth,
-            workPerformed: newUpdate.workPerformed.trim(),
-          };
-        });
+              : prev.updates[0]?.girth ?? prev.currentGirth,
+          workPerformed: newUpdate.workPerformed.trim(),
+        },
+        ...prev.updates,
+      ],
+    }));
 
-        const updatedTree = {
-          ...prev,
-          updates: updatedUpdates,
-          photos: newUpdate.photoPreview
-            ? [
-                {
-                  id: timestamp + 1,
-                  url: newUpdate.photoPreview,
-                  date: newUpdate.date,
-                  description:
-                    newUpdate.workPerformed.trim() || 'Tree update photo',
-                },
-                ...prev.photos,
-              ]
-            : prev.photos,
-        };
-
-        return updatedTree;
-      });
-    } else {
-      setTree((prev) => ({
-        ...prev,
-        updates: [
-          {
-            id: timestamp,
-            date: newUpdate.date,
-            girth:
-              newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
-                ? Number(newUpdate.girth)
-                : prev.updates[0]?.girth ?? prev.currentGirth,
-            workPerformed: newUpdate.workPerformed.trim(),
-          },
-          ...prev.updates,
-        ],
-        photos: newUpdate.photoPreview
-          ? [
-              {
-                id: timestamp + 1,
-                url: newUpdate.photoPreview,
-                date: newUpdate.date,
-                description:
-                  newUpdate.workPerformed.trim() || 'Tree update photo',
-              },
-              ...prev.photos,
-            ]
-          : prev.photos,
-      }));
-    }
-
-    if (newUpdate.addReminder) {
-      const reminder = {
-        id: timestamp + 2,
-        treeId: tree.id,
-        treeName: tree.name,
-        message: newUpdate.reminderMessage.trim(),
-        dueDate: newUpdate.reminderDueDate,
-      };
-      const updated = appendReminderToStorage(reminder);
-      setTreeReminders(updated.filter((item) => item.treeId === tree.id));
-    }
-
-    resetUpdateForm();
+    setNewUpdate({ date: "", girth: "", workPerformed: "" });
     setShowUpdateModal(false);
   };
 
@@ -453,57 +310,6 @@ const TreeDetail = () => {
             <p className="text-gray-700">{update.workPerformed}</p>
           </div>
         ))}
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-amber-700">
-          <Bell className="h-4 w-4" /> Follow-up reminders
-        </div>
-        {sortedTreeReminders.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No reminders have been scheduled for this tree yet.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {sortedTreeReminders.map((reminder) => {
-              const reminderDate = new Date(reminder.dueDate);
-              reminderDate.setHours(0, 0, 0, 0);
-              const isOverdue = reminderDate.getTime() < todayStart.getTime();
-              return (
-                <li
-                  key={reminder.id}
-                  className={`flex flex-col gap-2 rounded-lg border p-3 text-sm shadow-sm ${
-                    isOverdue
-                      ? 'border-red-200 bg-red-50/60'
-                      : 'border-blue-200 bg-blue-50/60'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900">
-                      {reminder.message}
-                    </span>
-                    <span
-                      className={`text-xs font-semibold uppercase tracking-wide ${
-                        isOverdue ? 'text-red-600' : 'text-blue-600'
-                      }`}
-                    >
-                      {formatDate(reminder.dueDate)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-end text-xs text-gray-600">
-                    <button
-                      onClick={() => handleCompleteTreeReminder(reminder.id)}
-                      className="inline-flex items-center gap-1 rounded-full border border-green-200 px-2 py-1 font-semibold text-green-700 transition hover:bg-green-50 hover:text-green-800"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      Done
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
     </div>
   );
