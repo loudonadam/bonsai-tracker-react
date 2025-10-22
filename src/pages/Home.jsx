@@ -24,6 +24,7 @@ import {
 import {
   DEVELOPMENT_STAGE_OPTIONS,
   DEFAULT_STAGE_VALUE,
+  getStageMeta,
 } from "../utils/developmentStages";
 import { useTrees } from "../context/TreesContext";
 
@@ -36,7 +37,7 @@ const Home = () => {
   const [showReminders, setShowReminders] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [showAddTree, setShowAddTree] = useState(false);
-  const [stageFilter, setStageFilter] = useState("all");
+  const [sortOption, setSortOption] = useState("recent");
 
   const defaultReminders = [
     {
@@ -205,18 +206,107 @@ const Home = () => {
     setShowAddTree(false);
   };
 
-  const filteredTrees = trees.filter((tree) => {
-    const matchesQuery =
-      tree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tree.species.toLowerCase().includes(searchQuery.toLowerCase());
-    const treeStage =
-      typeof tree.developmentStage === "string"
-        ? tree.developmentStage.toLowerCase()
-        : DEFAULT_STAGE_VALUE;
-    const matchesStage = stageFilter === "all" || treeStage === stageFilter;
+  const stageOrder = useMemo(() => {
+    return DEVELOPMENT_STAGE_OPTIONS.reduce((accumulator, option, index) => {
+      accumulator[option.value] = index;
+      return accumulator;
+    }, {});
+  }, []);
 
-    return matchesQuery && matchesStage;
-  });
+  const filteredTrees = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    const matches = trees.filter((tree) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const nameMatch = tree.name.toLowerCase().includes(normalizedQuery);
+      const speciesMatch = (tree.species || "")
+        .toLowerCase()
+        .includes(normalizedQuery);
+
+      const stageValue =
+        typeof tree.developmentStage === "string"
+          ? tree.developmentStage.toLowerCase()
+          : DEFAULT_STAGE_VALUE;
+      const stageMeta = getStageMeta(stageValue);
+
+      const stageMatch =
+        stageValue.includes(normalizedQuery) ||
+        stageMeta.label.toLowerCase().includes(normalizedQuery) ||
+        stageMeta.shortLabel.toLowerCase().includes(normalizedQuery);
+
+      return nameMatch || speciesMatch || stageMatch;
+    });
+
+    const parseDate = (value) => {
+      if (!value) {
+        return 0;
+      }
+
+      const time = new Date(value).getTime();
+      return Number.isNaN(time) ? 0 : time;
+    };
+
+    const sortByRecent = (a, b) => {
+      const aTime = parseDate(a.lastUpdate);
+      const bTime = parseDate(b.lastUpdate);
+      return bTime - aTime;
+    };
+
+    const sorted = [...matches].sort((a, b) => {
+      switch (sortOption) {
+        case "stage": {
+          const aStage =
+            typeof a.developmentStage === "string"
+              ? a.developmentStage.toLowerCase()
+              : DEFAULT_STAGE_VALUE;
+          const bStage =
+            typeof b.developmentStage === "string"
+              ? b.developmentStage.toLowerCase()
+              : DEFAULT_STAGE_VALUE;
+
+          const aIndex = stageOrder[aStage] ?? Number.MAX_SAFE_INTEGER;
+          const bIndex = stageOrder[bStage] ?? Number.MAX_SAFE_INTEGER;
+
+          if (aIndex === bIndex) {
+            return sortByRecent(a, b);
+          }
+
+          return aIndex - bIndex;
+        }
+        case "age": {
+          const aTime = parseDate(a.acquisitionDate);
+          const bTime = parseDate(b.acquisitionDate);
+
+          if (aTime === bTime) {
+            return sortByRecent(a, b);
+          }
+
+          return aTime - bTime;
+        }
+        case "species": {
+          const speciesCompare = (a.species || "").localeCompare(
+            b.species || "",
+            undefined,
+            { sensitivity: "base" }
+          );
+
+          if (speciesCompare === 0) {
+            return sortByRecent(a, b);
+          }
+
+          return speciesCompare;
+        }
+        case "recent":
+        default:
+          return sortByRecent(a, b);
+      }
+    });
+
+    return sorted;
+  }, [trees, searchQuery, sortOption, stageOrder]);
 
   // ─── Render ───────────────────────────────────────────
   return (
@@ -404,24 +494,22 @@ const Home = () => {
 
         {/* Tree Grid */}
         <section>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-gray-800">My Collection</h2>
             <div className="flex items-center gap-2">
-              <label htmlFor="stage-filter" className="text-sm text-gray-600">
-                Growth stage
+              <label htmlFor="sort-option" className="text-sm text-gray-600">
+                Sort by
               </label>
               <select
-                id="stage-filter"
-                value={stageFilter}
-                onChange={(event) => setStageFilter(event.target.value)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200"
+                id="sort-option"
+                value={sortOption}
+                onChange={(event) => setSortOption(event.target.value)}
+                className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-100"
               >
-                <option value="all">All stages</option>
-                {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                <option value="recent">Most recent update</option>
+                <option value="stage">Growth stage</option>
+                <option value="age">Age</option>
+                <option value="species">Species</option>
               </select>
             </div>
           </div>
@@ -445,7 +533,11 @@ const Home = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
               {filteredTrees.map((tree) => (
-                <div key={tree.id} onClick={() => navigate(`/tree/${tree.id}`)}>
+                <div
+                  key={tree.id}
+                  onClick={() => navigate(`/tree/${tree.id}`)}
+                  className="h-full cursor-pointer"
+                >
                   <TreeCard tree={tree} />
                 </div>
               ))}

@@ -175,7 +175,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
                   developmentStage: event.target.value,
                 })
               }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent bg-white text-gray-700"
+              className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-gray-700 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200"
             >
               {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>

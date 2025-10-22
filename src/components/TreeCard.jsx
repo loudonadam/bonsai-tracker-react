@@ -1,6 +1,6 @@
-import React from 'react';
-import { Camera, Calendar, Ruler } from 'lucide-react';
-import { getStageMeta } from '../utils/developmentStages';
+import React from "react";
+import { Camera, Calendar, Ruler } from "lucide-react";
+import { getStageMeta } from "../utils/developmentStages";
 
 // TreeCard Component - displays a single bonsai tree
 const TreeCard = ({
@@ -13,8 +13,8 @@ const TreeCard = ({
     lastUpdate: "2024-12-01",
     photoUrl: null,
     notes: "Beautiful fall colors",
-    developmentStage: "pre-bonsai"
-  }
+    developmentStage: "pre-bonsai",
+  },
 }) => {
   // Calculate tree age in years
   const calculateAge = (dateString) => {
@@ -26,82 +26,87 @@ const TreeCard = ({
 
   // Format date for display
   const formatDate = (dateString) => {
-    if (!dateString) return 'No updates yet';
+    if (!dateString) return "No updates yet";
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   const stageMeta = getStageMeta(tree.developmentStage);
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300 cursor-pointer">
-      {/* Image Section */}
-      <div className="relative h-48 bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
-        <div className="absolute top-3 left-3">
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold shadow-sm ${stageMeta.badgeClasses}`}
-            title={stageMeta.label}
-          >
-            <span className={`h-2 w-2 rounded-full ${stageMeta.dotClasses}`} />
-            {stageMeta.shortLabel}
-          </span>
-        </div>
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
+      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-green-50 to-green-100">
         {tree.photoUrl ? (
           <img
             src={tree.photoUrl}
             alt={tree.name}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
         ) : (
-          <Camera className="w-16 h-16 text-green-400" strokeWidth={1.5} />
+          <div className="flex h-full w-full items-center justify-center text-green-300">
+            <Camera className="h-14 w-14" strokeWidth={1.5} />
+          </div>
         )}
       </div>
 
-      {/* Content Section */}
-      <div className="p-4">
+      <div className="flex flex-1 flex-col p-4">
         {/* Tree Name & Species */}
         <div className="mb-3">
-          <h3 className="text-lg font-semibold text-gray-800 truncate">
+          <h3 className="truncate text-lg font-semibold text-gray-800">
             {tree.name}
           </h3>
-          <p className="text-sm text-gray-500 italic">
-            {tree.species || 'Unknown species'}
+          <p className="text-sm italic text-gray-500">
+            {tree.species || "Unknown species"}
           </p>
         </div>
 
         {/* Stats Grid */}
-        <div className="space-y-2 text-sm">
+        <div className="space-y-2 text-sm text-gray-600">
           {/* Age */}
-          <div className="flex items-center text-gray-600">
-            <Calendar className="w-4 h-4 mr-2 text-green-600" />
+          <div className="flex items-center">
+            <Calendar className="mr-2 h-4 w-4 text-green-500" />
             <span>{calculateAge(tree.acquisitionDate)} years old</span>
           </div>
 
           {/* Girth */}
           {tree.currentGirth && (
-            <div className="flex items-center text-gray-600">
-              <Ruler className="w-4 h-4 mr-2 text-green-600" />
+            <div className="flex items-center">
+              <Ruler className="mr-2 h-4 w-4 text-green-500" />
               <span>{tree.currentGirth} cm girth</span>
             </div>
           )}
 
           {/* Last Update */}
-          <div className="flex items-center text-gray-600">
-            <div className="w-4 h-4 mr-2 flex items-center justify-center">
-              <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+          <div className="flex items-center text-xs uppercase tracking-wide text-gray-400">
+            <div className="mr-2 flex h-4 w-4 items-center justify-center">
+              <div className="h-2 w-2 rounded-full bg-green-400"></div>
             </div>
-            <span className="text-xs">Updated {formatDate(tree.lastUpdate)}</span>
+            <span>Updated {formatDate(tree.lastUpdate)}</span>
           </div>
         </div>
 
         {/* Notes Preview (if present) */}
         {tree.notes && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs text-gray-500 line-clamp-2">
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <p className="line-clamp-2 text-xs text-gray-500">
               {tree.notes}
             </p>
           </div>
         )}
+
+        <div className="mt-4 flex items-center justify-end">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium shadow-sm ${stageMeta.badgeClasses}`}
+            title={stageMeta.label}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${stageMeta.dotClasses}`} />
+            {stageMeta.shortLabel}
+          </span>
+        </div>
       </div>
     </div>
   );

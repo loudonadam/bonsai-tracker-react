@@ -36,38 +36,38 @@ const GraveyardSection = ({ title, description, entries, onDelete }) => {
                 </div>
               )}
               <div className="absolute top-4 left-4">
-                <span className="inline-flex items-center gap-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm">
                   {title}
                 </span>
               </div>
             </div>
             <div className="p-6 flex flex-col gap-4">
               <header className="flex flex-col gap-1">
-                <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
                   {entry.tree.name}
                 </h3>
-                <p className="text-sm text-gray-500">{entry.tree.species}</p>
+                <p className="text-sm text-slate-500">{entry.tree.species}</p>
               </header>
 
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+              <div className="flex flex-wrap gap-4 text-sm text-slate-600">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <Calendar className="w-4 h-4 text-slate-400" />
                   <span>
                     Moved on {new Date(entry.movedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </span>
                 </div>
                 {entry.note && (
                   <div className="flex items-start gap-2">
-                    <MessageSquare className="w-4 h-4 text-gray-400 mt-1" />
-                    <p className="text-sm text-gray-700 leading-relaxed">
+                    <MessageSquare className="w-4 h-4 text-slate-400 mt-1" />
+                    <p className="text-sm text-slate-600 leading-relaxed">
                       {entry.note}
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-100">
-                <div className="flex items-center gap-2 text-sm text-rose-600">
+              <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-2 text-sm text-amber-600">
                   <AlertTriangle className="w-4 h-4" />
                   <span>This action is permanent</span>
                 </div>
@@ -103,23 +103,23 @@ const Graveyard = () => {
   const newOwnerTrees = graveyard.filter((entry) => entry.category === "new-owner");
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+    <div className="min-h-screen bg-slate-100 text-slate-800">
+      <div className="mx-auto max-w-5xl space-y-10 px-4 py-10 sm:px-6 lg:px-8">
         <header className="space-y-4">
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-2 text-sm text-slate-300 hover:text-white"
+            className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-700"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
           </button>
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-full bg-rose-500/20 flex items-center justify-center">
-              <Skull className="w-6 h-6 text-rose-400" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-slate-500">
+              <Skull className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-3xl font-semibold">Bonsai Graveyard</h1>
-              <p className="text-sm text-slate-300">
+              <h1 className="text-3xl font-semibold text-slate-800">Bonsai Graveyard</h1>
+              <p className="text-sm text-slate-500">
                 A quiet place to honor trees that have moved on and to reflect on their stories.
               </p>
             </div>
@@ -128,7 +128,7 @@ const Graveyard = () => {
 
         <section className="space-y-6">
           <div>
-            <h2 className="text-lg font-semibold text-white mb-3">Dead</h2>
+            <h2 className="mb-3 text-lg font-semibold text-slate-700">Dead</h2>
             <GraveyardSection
               title="Dead"
               description="Trees that have passed on will appear here with your notes on what happened."
@@ -138,7 +138,7 @@ const Graveyard = () => {
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold text-white mb-3">New Owner</h2>
+            <h2 className="mb-3 text-lg font-semibold text-slate-700">New Owner</h2>
             <GraveyardSection
               title="New Owner"
               description="Sold or gifted trees will live here with their final notes and sale details."

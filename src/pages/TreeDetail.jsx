@@ -676,9 +676,8 @@ const TreeDetail = () => {
             </button>
             <button
               onClick={openMoveToGraveyardModal}
-              className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 flex items-center gap-2"
+              className="flex items-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-gray-700 transition hover:bg-gray-300"
             >
-              <Skull className="w-4 h-4" />
               Move to Graveyard
             </button>
           </div>
@@ -1016,9 +1015,8 @@ const TreeDetail = () => {
                 <button
                   type="submit"
                   disabled={isMovingTree}
-                  className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+                  className="inline-flex items-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-300 disabled:cursor-not-allowed disabled:bg-gray-200"
                 >
-                  <Skull className="h-4 w-4" />
                   Move to Graveyard
                 </button>
               </div>
