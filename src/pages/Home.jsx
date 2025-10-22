@@ -10,6 +10,7 @@ import {
   ChevronUp,
   X,
   CheckCircle,
+  Skull,
 } from "lucide-react";
 import TreeCard from "../components/TreeCard";
 import AddTreeModal from "../components/AddTreeModal";
@@ -24,36 +25,13 @@ import {
   DEVELOPMENT_STAGE_OPTIONS,
   DEFAULT_STAGE_VALUE,
 } from "../utils/developmentStages";
-
-// ─── Mock Data ───────────────────────────────────────────
-const initialTrees = [
-  {
-    id: 1,
-    name: "Autumn Flame",
-    species: "Japanese Maple (Acer palmatum)",
-    acquisitionDate: "2018-04-20",
-    currentGirth: 15.3,
-    lastUpdate: "2024-11-15",
-    notes: "Beautiful red leaves in fall. Needs repotting next spring.",
-    developmentStage: "refinement",
-  },
-  {
-    id: 2,
-    name: "Ancient Pine",
-    species: "Japanese Black Pine",
-    acquisitionDate: "2015-06-10",
-    currentGirth: 22.7,
-    lastUpdate: "2024-10-28",
-    notes: "Very healthy. Wire training going well.",
-    developmentStage: "show-eligible",
-  },
-];
+import { useTrees } from "../context/TreesContext";
 
 const Home = () => {
   const navigate = useNavigate();
+  const { trees, addTree } = useTrees();
 
   // ─── State ───────────────────────────────────────────
-  const [trees, setTrees] = useState(initialTrees);
   const [searchQuery, setSearchQuery] = useState("");
   const [showReminders, setShowReminders] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
@@ -81,21 +59,38 @@ const Home = () => {
 
   // ─── Derived Stats ───────────────────────────────────────────
   const totalTrees = trees.length;
-  const avgAge = (
-    trees.reduce((sum, t) => {
+
+  const { avgAge, uniqueSpecies, newestTree, oldestTree } = useMemo(() => {
+    if (trees.length === 0) {
+      return {
+        avgAge: "0.0",
+        uniqueSpecies: 0,
+        newestTree: null,
+        oldestTree: null,
+      };
+    }
+
+    const ageSum = trees.reduce((sum, t) => {
       const age =
         (new Date() - new Date(t.acquisitionDate)) /
         (1000 * 60 * 60 * 24 * 365.25);
       return sum + age;
-    }, 0) / trees.length
-  ).toFixed(1);
-  const uniqueSpecies = new Set(trees.map((t) => t.species)).size;
-  const newestTree = trees.reduce((a, b) =>
-    a.acquisitionDate > b.acquisitionDate ? a : b
-  );
-  const oldestTree = trees.reduce((a, b) =>
-    a.acquisitionDate < b.acquisitionDate ? a : b
-  );
+    }, 0);
+
+    const newest = trees.reduce((a, b) =>
+      new Date(a.acquisitionDate) > new Date(b.acquisitionDate) ? a : b
+    );
+    const oldest = trees.reduce((a, b) =>
+      new Date(a.acquisitionDate) < new Date(b.acquisitionDate) ? a : b
+    );
+
+    return {
+      avgAge: (ageSum / trees.length).toFixed(1),
+      uniqueSpecies: new Set(trees.map((t) => t.species)).size,
+      newestTree: newest,
+      oldestTree: oldest,
+    };
+  }, [trees]);
 
   // ─── Reminder Helpers ───────────────────────────────────────────
   const addReminder = (reminder) => {
@@ -203,13 +198,10 @@ const Home = () => {
   const handleAddTree = (treeData) => {
     const stageValue =
       treeData.developmentStage?.toLowerCase() || DEFAULT_STAGE_VALUE;
-    setTrees((prev) => [
-      ...prev,
-      {
-        ...treeData,
-        developmentStage: stageValue,
-      },
-    ]);
+    addTree({
+      ...treeData,
+      developmentStage: stageValue,
+    });
     setShowAddTree(false);
   };
 
@@ -249,18 +241,33 @@ const Home = () => {
               </div>
             </div>
 
-            <button
-              onClick={() => navigate("/settings")}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Settings className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate("/graveyard")}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Open graveyard"
+              >
+                <Skull className="w-6 h-6" />
+              </button>
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Settings className="w-6 h-6" />
+              </button>
+            </div>
           </div>
 
           {/* Mobile */}
           <div className="lg:hidden flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold text-gray-900">🌱 Bonsai Tracker</h1>
+              <button
+                onClick={() => navigate("/graveyard")}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Skull className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => navigate("/settings")}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -310,8 +317,8 @@ const Home = () => {
             <ul className="space-y-1 text-sm text-gray-700">
               <li className="flex justify-between"><span>Total Trees:</span><span>{totalTrees}</span></li>
               <li className="flex justify-between"><span>Unique Species:</span><span>{uniqueSpecies}</span></li>
-              <li className="flex justify-between"><span>Newest:</span><span>{newestTree.name}</span></li>
-              <li className="flex justify-between"><span>Oldest:</span><span>{oldestTree.name}</span></li>
+              <li className="flex justify-between"><span>Newest:</span><span>{newestTree ? newestTree.name : "--"}</span></li>
+              <li className="flex justify-between"><span>Oldest:</span><span>{oldestTree ? oldestTree.name : "--"}</span></li>
               <li className="flex justify-between"><span>Avg Age:</span><span>{avgAge}y</span></li>
             </ul>
           </div>

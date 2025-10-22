@@ -15,6 +15,8 @@ import {
   CheckCircle,
   ImagePlus,
   ChevronDown,
+  Skull,
+  AlertTriangle,
 } from "lucide-react";
 import {
   appendReminderToStorage,
@@ -25,6 +27,7 @@ import {
   DEFAULT_STAGE_VALUE,
   getStageMeta,
 } from "../utils/developmentStages";
+import { useTrees } from "../context/TreesContext";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -87,6 +90,9 @@ const initialAccoladeState = {
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { getTreeById, moveTreeToGraveyard } = useTrees();
+  const numericId = Number(id);
+  const treeFromCollection = getTreeById(numericId);
   const [tree, setTree] = useState(mockTreeData);
   const [activeTab, setActiveTab] = useState('overview');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -99,6 +105,12 @@ const TreeDetail = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [newUpdate, setNewUpdate] = useState(initialUpdateState);
   const [editingUpdateId, setEditingUpdateId] = useState(null);
+  const [showGraveyardModal, setShowGraveyardModal] = useState(false);
+  const [graveyardForm, setGraveyardForm] = useState({
+    category: "dead",
+    note: "",
+  });
+  const [isMovingTree, setIsMovingTree] = useState(false);
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -117,6 +129,15 @@ const TreeDetail = () => {
     () => getStageMeta(tree.developmentStage),
     [tree.developmentStage]
   );
+
+  useEffect(() => {
+    if (treeFromCollection) {
+      setTree((prev) => ({
+        ...prev,
+        ...treeFromCollection,
+      }));
+    }
+  }, [treeFromCollection]);
 
   const selectedAccoladePhoto = useMemo(() => {
     if (newAccolade.uploadPreview) {
@@ -155,6 +176,34 @@ const TreeDetail = () => {
       document.removeEventListener("mousedown", handleClickAway);
     };
   }, [isStageMenuOpen]);
+
+  const openMoveToGraveyardModal = () => {
+    setGraveyardForm({ category: "dead", note: "" });
+    setShowGraveyardModal(true);
+  };
+
+  const closeMoveToGraveyardModal = () => {
+    setShowGraveyardModal(false);
+    setGraveyardForm({ category: "dead", note: "" });
+    setIsMovingTree(false);
+  };
+
+  const handleMoveToGraveyard = (event) => {
+    event.preventDefault();
+    if (!treeFromCollection) {
+      closeMoveToGraveyardModal();
+      return;
+    }
+
+    setIsMovingTree(true);
+    moveTreeToGraveyard(tree.id, {
+      category: graveyardForm.category,
+      note: graveyardForm.note,
+    });
+    setIsMovingTree(false);
+    closeMoveToGraveyardModal();
+    navigate("/graveyard");
+  };
 
   const openEditModal = () => {
     setEditData({
@@ -561,6 +610,40 @@ const TreeDetail = () => {
     </div>
   );
 
+  if (!treeFromCollection) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md space-y-6">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+            <Skull className="h-8 w-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-gray-900">Tree not in collection</h1>
+            <p className="text-gray-600">
+              This tree is no longer part of your active collection. Check the Graveyard to review its story or return to your
+              collection overview.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button
+              onClick={() => navigate("/")}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            >
+              Back to home
+            </button>
+            <button
+              onClick={() => navigate("/graveyard")}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700"
+            >
+              <Skull className="h-4 w-4" />
+              Visit Graveyard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ─── Render ───────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 pl-2 pr-0 sm:pl-4">
@@ -590,6 +673,13 @@ const TreeDetail = () => {
             >
               <Edit className="w-4 h-4" />
               Edit Tree
+            </button>
+            <button
+              onClick={openMoveToGraveyardModal}
+              className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 flex items-center gap-2"
+            >
+              <Skull className="w-4 h-4" />
+              Move to Graveyard
             </button>
           </div>
         </div>
@@ -810,6 +900,132 @@ const TreeDetail = () => {
           </div>
         </aside>
       </main>
+      {showGraveyardModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <button
+              onClick={closeMoveToGraveyardModal}
+              className="absolute right-4 top-4 text-gray-400 transition hover:text-gray-600"
+              aria-label="Close graveyard modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                <Skull className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Move to Graveyard</h3>
+                <p className="text-sm text-gray-500">
+                  Choose what happened and leave a note to remember this tree by.
+                </p>
+              </div>
+            </div>
+
+            <form className="space-y-5" onSubmit={handleMoveToGraveyard}>
+              <div>
+                <span className="block text-sm font-medium text-gray-700 mb-2">Reason</span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={`flex items-start gap-3 rounded-lg border px-3 py-3 text-sm transition ${
+                      graveyardForm.category === "dead"
+                        ? "border-rose-500 bg-rose-50 text-rose-700"
+                        : "border-gray-200 hover:border-rose-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="graveyard-category"
+                      value="dead"
+                      checked={graveyardForm.category === "dead"}
+                      onChange={(event) =>
+                        setGraveyardForm((prev) => ({
+                          ...prev,
+                          category: event.target.value,
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="font-semibold">It died</p>
+                      <p className="text-xs text-gray-500">Record lessons learned and what caused it.</p>
+                    </div>
+                  </label>
+                  <label
+                    className={`flex items-start gap-3 rounded-lg border px-3 py-3 text-sm transition ${
+                      graveyardForm.category === "new-owner"
+                        ? "border-rose-500 bg-rose-50 text-rose-700"
+                        : "border-gray-200 hover:border-rose-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="graveyard-category"
+                      value="new-owner"
+                      checked={graveyardForm.category === "new-owner"}
+                      onChange={(event) =>
+                        setGraveyardForm((prev) => ({
+                          ...prev,
+                          category: event.target.value,
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="font-semibold">New owner</p>
+                      <p className="text-xs text-gray-500">Capture sale details or who it went home with.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Leave a note
+                </label>
+                <textarea
+                  rows={4}
+                  value={graveyardForm.note}
+                  onChange={(event) =>
+                    setGraveyardForm((prev) => ({
+                      ...prev,
+                      note: event.target.value,
+                    }))
+                  }
+                  placeholder="Share lessons learned, sale price, or who adopted it."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-200"
+                />
+              </div>
+
+              <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+                <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                <p>
+                  This tree will leave your active collection and move to the Graveyard. You can still review it there or delete
+                  it forever later.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeMoveToGraveyardModal}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isMovingTree}
+                  className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+                >
+                  <Skull className="h-4 w-4" />
+                  Move to Graveyard
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showUpdateModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
