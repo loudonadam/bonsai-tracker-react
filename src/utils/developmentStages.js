@@ -5,6 +5,7 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     shortLabel: "Pre-Bonsai",
     badgeClasses:
       "bg-amber-50 text-amber-700 border border-amber-200",
+    textClasses: "text-amber-700",
     dotClasses: "bg-amber-400",
   },
   {
@@ -13,6 +14,7 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     shortLabel: "Initial Styling",
     badgeClasses:
       "bg-green-50 text-green-700 border border-green-200",
+    textClasses: "text-green-700",
     dotClasses: "bg-green-400",
   },
   {
@@ -21,6 +23,7 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     shortLabel: "Early Dev.",
     badgeClasses:
       "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    textClasses: "text-emerald-700",
     dotClasses: "bg-emerald-400",
   },
   {
@@ -29,6 +32,7 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     shortLabel: "Refinement",
     badgeClasses:
       "bg-teal-50 text-teal-700 border border-teal-200",
+    textClasses: "text-teal-700",
     dotClasses: "bg-teal-400",
   },
   {
@@ -37,6 +41,7 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     shortLabel: "Mature",
     badgeClasses:
       "bg-purple-50 text-purple-700 border border-purple-200",
+    textClasses: "text-purple-700",
     dotClasses: "bg-purple-400",
   },
 ];

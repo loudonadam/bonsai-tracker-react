@@ -2,35 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Edit, Plus, BookOpen, Trees } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-
-// ─── Mock species data ─────────────────────────────────────────
-const mockSpecies = [
-  {
-    id: 1,
-    commonName: "Japanese Maple",
-    scientificName: "Acer palmatum",
-    treeCount: 3,
-    notes: `### Care Overview
-- **Watering:** Keep soil moist but well-drained.
-- **Repotting:** Every 2 years in early spring.
-- **Light:** Partial shade during hot months.
-
-#### Soil
-Use a well-draining bonsai mix. I'll expand this later with exact ratios.`,
-  },
-  {
-    id: 2,
-    commonName: "Chinese Elm",
-    scientificName: "Ulmus parvifolia",
-    treeCount: 2,
-    notes: `### Care Overview
-- **Watering:** Regular watering, reduce in winter.
-- **Pruning:** Trim back new shoots every 3–4 weeks.
-- **Repotting:** Every 2–3 years in late winter.
-
-Tips: This species tolerates wiring well. Replace placeholder text with your template note.`,
-  },
-];
+import { useSpecies } from "../context/SpeciesContext";
 
 // ─── ExpandableNote component ───────────────────────────────────
 // Displays a markdown block that collapses to `collapsedHeight` px
@@ -104,7 +76,7 @@ const ExpandableNote = ({ content, collapsedHeight = 200 }) => {
 // ─── Species page ─────────────────────────────────────────────
 const Species = () => {
   const navigate = useNavigate();
-  const [speciesList, setSpeciesList] = useState(mockSpecies);
+  const { species: speciesList, updateSpecies } = useSpecies();
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     commonName: "",
@@ -122,9 +94,11 @@ const Species = () => {
   };
 
   const handleSave = () => {
-    setSpeciesList((prev) =>
-      prev.map((s) => (s.id === editingId ? { ...s, ...formData } : s))
-    );
+    updateSpecies(editingId, {
+      commonName: formData.commonName.trim(),
+      scientificName: formData.scientificName.trim(),
+      notes: formData.notes,
+    });
     setEditingId(null);
   };
 
@@ -162,7 +136,7 @@ const Species = () => {
           </h1>
 
           {/* Species Grid (2 columns on >= small screens) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
             {speciesList.map((species) => (
               <div
                 key={species.id}

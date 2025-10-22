@@ -42,7 +42,7 @@ try {
     Tooltip,
     ResponsiveContainer,
   } = await import("recharts"));
-} catch (err) {
+} catch {
   RechartsAvailable = false;
 }
 
@@ -177,6 +177,23 @@ const TreeDetail = () => {
     };
   }, [isStageMenuOpen]);
 
+  useEffect(() => {
+    if (!fullscreenPhoto) {
+      return;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setFullscreenPhoto(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [fullscreenPhoto]);
+
   const openMoveToGraveyardModal = () => {
     setGraveyardForm({ category: "dead", note: "" });
     setShowGraveyardModal(true);
@@ -274,6 +291,53 @@ const TreeDetail = () => {
       developmentStage: stageValue,
     }));
     setIsStageMenuOpen(false);
+  };
+
+  const openPhotoViewer = (photo, options = {}) => {
+    if (!photo || !photo.url) {
+      return;
+    }
+
+    const title =
+      options.title ??
+      (photo.description ? photo.description : tree.name || "Tree Photo");
+
+    const subtitle =
+      options.subtitle ??
+      (photo.date ? formatDate(photo.date) : undefined);
+
+    setFullscreenPhoto({
+      url: photo.url,
+      title,
+      subtitle,
+      description: options.description,
+    });
+  };
+
+  const handleAccoladePreview = (accolade, linkedPhoto) => {
+    const source = accolade.uploadedPhoto
+      ? { url: accolade.uploadedPhoto }
+      : linkedPhoto;
+
+    if (!source || !source.url) {
+      return;
+    }
+
+    const subtitleParts = [];
+    if (linkedPhoto?.date) {
+      subtitleParts.push(formatDate(linkedPhoto.date));
+    }
+    if (linkedPhoto?.description) {
+      subtitleParts.push(linkedPhoto.description);
+    }
+
+    openPhotoViewer(source, {
+      title: accolade.title,
+      subtitle: subtitleParts.join(" • ") || undefined,
+      description: accolade.uploadedPhoto
+        ? "Uploaded accolade photo"
+        : undefined,
+    });
   };
 
   const openAccoladeModal = (index = null) => {
@@ -512,12 +576,24 @@ const TreeDetail = () => {
             src={tree.photos[currentPhotoIndex].url}
             alt={tree.photos[currentPhotoIndex].description}
             className="w-full h-full object-contain cursor-pointer"
-            onClick={() => setFullscreenPhoto(tree.photos[currentPhotoIndex])}
+            onClick={() =>
+              openPhotoViewer(tree.photos[currentPhotoIndex], {
+                subtitle: tree.photos[currentPhotoIndex].date
+                  ? formatDate(tree.photos[currentPhotoIndex].date)
+                  : undefined,
+              })
+            }
           />
         ) : (
           <div
             className="w-full h-full flex items-center justify-center cursor-pointer"
-            onClick={() => setFullscreenPhoto(tree.photos[currentPhotoIndex])}
+            onClick={() =>
+              openPhotoViewer(tree.photos[currentPhotoIndex], {
+                subtitle: tree.photos[currentPhotoIndex].date
+                  ? formatDate(tree.photos[currentPhotoIndex].date)
+                  : undefined,
+              })
+            }
           >
             <Camera className="w-24 h-24 text-gray-400" />
           </div>
@@ -697,7 +773,7 @@ const TreeDetail = () => {
                   className="focus:outline-none"
                 >
                   <span
-                    className={`flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold shadow-sm transition ${stageMeta.badgeClasses}`}
+                    className={`flex items-center gap-2 text-sm font-semibold ${stageMeta.textClasses}`}
                     title={stageMeta.label}
                   >
                     <span className={`h-2.5 w-2.5 rounded-full ${stageMeta.dotClasses}`} />
@@ -835,10 +911,21 @@ const TreeDetail = () => {
                     ? { url: accolade.uploadedPhoto }
                     : linkedPhoto;
 
+                  const canPreview = Boolean(displayPhoto?.url);
+
                   return (
                     <li
                       key={idx}
-                      className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
+                      className={`flex items-center gap-3 rounded-md border px-3 py-2 transition ${
+                        canPreview
+                          ? "border-gray-200 bg-gray-50 hover:border-green-200 hover:bg-white cursor-pointer"
+                          : "border-gray-200 bg-gray-50"
+                      }`}
+                      onClick={
+                        canPreview
+                          ? () => handleAccoladePreview(accolade, linkedPhoto)
+                          : undefined
+                      }
                     >
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
                         {displayPhoto ? (
@@ -874,7 +961,10 @@ const TreeDetail = () => {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => openAccoladeModal(idx)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openAccoladeModal(idx);
+                          }}
                           className="text-gray-400 transition hover:text-green-600"
                           aria-label="Edit accolade"
                         >
@@ -882,7 +972,10 @@ const TreeDetail = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleRemoveAccolade(idx)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRemoveAccolade(idx);
+                          }}
                           className="text-gray-400 transition hover:text-red-600"
                           aria-label="Delete accolade"
                         >
@@ -1416,6 +1509,55 @@ const TreeDetail = () => {
                 Save Changes
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {fullscreenPhoto?.url && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-8"
+          onClick={() => setFullscreenPhoto(null)}
+        >
+          <div
+            className="relative w-full max-w-5xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setFullscreenPhoto(null)}
+              className="absolute -top-3 -right-3 rounded-full bg-black/70 p-2 text-white transition hover:bg-black"
+              aria-label="Close fullscreen photo"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <img
+              src={fullscreenPhoto.url}
+              alt={fullscreenPhoto.title || "Tree photo"}
+              className="max-h-[80vh] w-full rounded-lg object-contain"
+            />
+
+            {(fullscreenPhoto.title ||
+              fullscreenPhoto.subtitle ||
+              fullscreenPhoto.description) && (
+              <div className="mt-4 space-y-2 text-center text-white">
+                {fullscreenPhoto.title && (
+                  <h3 className="text-xl font-semibold">
+                    {fullscreenPhoto.title}
+                  </h3>
+                )}
+                {fullscreenPhoto.subtitle && (
+                  <p className="text-sm text-white/80">
+                    {fullscreenPhoto.subtitle}
+                  </p>
+                )}
+                {fullscreenPhoto.description && (
+                  <p className="text-sm text-white/70">
+                    {fullscreenPhoto.description}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -4,11 +4,11 @@ import {
   DEVELOPMENT_STAGE_OPTIONS,
   DEFAULT_STAGE_VALUE,
 } from "../utils/developmentStages";
+import { useSpecies } from "../context/SpeciesContext";
 
 const AddTreeModal = ({ show, onClose, onSave }) => {
   const [newTree, setNewTree] = useState({
     name: "",
-    species: "",
     acquisitionDate: "",
     originDate: "",
     trunkWidth: "",
@@ -19,12 +19,28 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
 
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
+  const { species: speciesList, addSpecies, incrementTreeCount } = useSpecies();
+  const [speciesMode, setSpeciesMode] = useState("existing");
+  const [selectedSpeciesId, setSelectedSpeciesId] = useState("");
+  const [newSpecies, setNewSpecies] = useState({
+    commonName: "",
+    scientificName: "",
+    notes: "",
+  });
+
+  const formatSpeciesLabel = (species) => {
+    if (!species) {
+      return "";
+    }
+    return species.scientificName
+      ? `${species.commonName} (${species.scientificName})`
+      : species.commonName;
+  };
 
   useEffect(() => {
     if (!show) {
       setNewTree({
         name: "",
-        species: "",
         acquisitionDate: "",
         originDate: "",
         trunkWidth: "",
@@ -34,34 +50,83 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
       });
       setPreview(null);
       setError("");
+      setSpeciesMode(speciesList.length > 0 ? "existing" : "new");
+      setSelectedSpeciesId(
+        speciesList.length > 0 ? String(speciesList[0].id) : ""
+      );
+      setNewSpecies({ commonName: "", scientificName: "", notes: "" });
+    } else if (speciesList.length === 0) {
+      setSpeciesMode("new");
+      setSelectedSpeciesId("");
+    } else if (speciesMode === "existing" && !selectedSpeciesId) {
+      setSelectedSpeciesId(String(speciesList[0].id));
     }
-  }, [show]);
-
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setNewTree({ ...newTree, photo: file });
-      setPreview(URL.createObjectURL(file));
-    }
-  };
+  }, [show, speciesList, speciesMode, selectedSpeciesId]);
 
   const handleSubmit = () => {
-    const { name, species, acquisitionDate, originDate } = newTree;
-    if (!name || !species || !acquisitionDate || !originDate) {
+    const { name, acquisitionDate, originDate, developmentStage } = newTree;
+    if (!name || !acquisitionDate || !originDate) {
       setError("Please fill in all required fields.");
       return;
     }
+
+    let speciesName = "";
+    let speciesId = null;
+
+    if (speciesMode === "existing") {
+      if (!selectedSpeciesId) {
+        setError("Please choose a species from your library.");
+        return;
+      }
+
+      const selected = speciesList.find(
+        (item) => String(item.id) === String(selectedSpeciesId)
+      );
+
+      if (!selected) {
+        setError("Please choose a species from your library.");
+        return;
+      }
+
+      speciesId = selected.id;
+      speciesName = formatSpeciesLabel(selected);
+      incrementTreeCount(speciesId, 1);
+    } else {
+      if (!newSpecies.commonName.trim()) {
+        setError("Please provide a common name for the new species.");
+        return;
+      }
+
+      const created = addSpecies({
+        commonName: newSpecies.commonName,
+        scientificName: newSpecies.scientificName,
+        notes: newSpecies.notes,
+        treeCount: 1,
+      });
+
+      speciesId = created.id;
+      speciesName = formatSpeciesLabel(created);
+    }
+
     setError("");
     onSave({
       ...newTree,
       id: Date.now(),
+      species: speciesName,
+      speciesId,
       currentGirth: 0,
       lastUpdate: newTree.acquisitionDate,
-      developmentStage: newTree.developmentStage,
+      developmentStage,
     });
   };
 
   if (!show) return null;
+
+  const speciesSelectValue =
+    speciesMode === "existing" ? selectedSpeciesId : "__new__";
+  const selectedSpecies = speciesList.find(
+    (item) => String(item.id) === String(selectedSpeciesId)
+  );
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-20 px-4">
@@ -104,15 +169,101 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Species *
             </label>
-            <input
-              type="text"
-              value={newTree.species}
-              onChange={(e) =>
-                setNewTree({ ...newTree, species: e.target.value })
-              }
-              placeholder="e.g. Chinese Elm (Ulmus parvifolia)"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-            />
+            <div className="space-y-2">
+              <select
+                value={speciesSelectValue}
+                onChange={(event) => {
+                  const { value } = event.target;
+                  if (value === "__new__") {
+                    setSpeciesMode("new");
+                    setSelectedSpeciesId("");
+                  } else {
+                    setSpeciesMode("existing");
+                    setSelectedSpeciesId(value);
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+              >
+                {speciesList.length === 0 && (
+                  <option value="" disabled>
+                    No species yet - add one below
+                  </option>
+                )}
+                {speciesList.map((species) => (
+                  <option key={species.id} value={String(species.id)}>
+                    {formatSpeciesLabel(species)}
+                  </option>
+                ))}
+                <option value="__new__">➕ Add a new species</option>
+              </select>
+
+              {speciesMode === "existing" && selectedSpecies && (
+                <p className="text-xs text-gray-500">
+                  {selectedSpecies.scientificName
+                    ? `Scientific name: ${selectedSpecies.scientificName}`
+                    : "Scientific name not recorded yet."}
+                </p>
+              )}
+
+              {speciesMode === "new" && (
+                <div className="space-y-3 rounded-lg border border-dashed border-green-200 bg-green-50/60 p-3">
+                  <p className="text-xs text-gray-600">
+                    Adding a new species will also save it to your library.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Common Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newSpecies.commonName}
+                      onChange={(event) =>
+                        setNewSpecies((prev) => ({
+                          ...prev,
+                          commonName: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g. Chinese Elm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Scientific Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newSpecies.scientificName}
+                      onChange={(event) =>
+                        setNewSpecies((prev) => ({
+                          ...prev,
+                          scientificName: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g. Ulmus parvifolia"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Notes
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={newSpecies.notes}
+                      onChange={(event) =>
+                        setNewSpecies((prev) => ({
+                          ...prev,
+                          notes: event.target.value,
+                        }))
+                      }
+                      placeholder="Optional care notes for this species"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Date Acquired */}

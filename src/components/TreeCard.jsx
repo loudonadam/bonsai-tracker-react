@@ -37,9 +37,9 @@ const TreeCard = ({
 
   const stageMeta = getStageMeta(tree.developmentStage);
 
-  return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-green-50 to-green-100">
+    return (
+      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
+        <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-green-50 to-green-100">
         {tree.photoUrl ? (
           <img
             src={tree.photoUrl}
@@ -65,7 +65,7 @@ const TreeCard = ({
         </div>
 
         {/* Stats Grid */}
-        <div className="space-y-2 text-sm text-gray-600">
+        <div className="space-y-1.5 text-sm text-gray-600">
           {/* Age */}
           <div className="flex items-center">
             <Calendar className="mr-2 h-4 w-4 text-green-500" />
@@ -91,14 +91,14 @@ const TreeCard = ({
 
         {/* Notes Preview (if present) */}
         {tree.notes && (
-          <div className="mt-3 border-t border-gray-100 pt-3">
+          <div className="mt-2 border-t border-gray-100 pt-2.5">
             <p className="line-clamp-2 text-xs text-gray-500">
               {tree.notes}
             </p>
           </div>
         )}
 
-        <div className="mt-4 flex items-center justify-end">
+        <div className="mt-3 flex items-center justify-end">
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium shadow-sm ${stageMeta.badgeClasses}`}
             title={stageMeta.label}

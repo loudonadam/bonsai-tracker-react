@@ -41,7 +41,7 @@ const Settings = () => {
         const importedData = JSON.parse(event.target.result);
         localStorage.setItem("bonsaiData", JSON.stringify(importedData));
         alert("Bonsai data imported successfully!");
-      } catch (error) {
+      } catch {
         alert("Invalid file format. Please upload a valid JSON export.");
       }
     };
