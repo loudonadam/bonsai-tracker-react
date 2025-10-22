@@ -1,98 +1,137 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import api, { API_BASE_URL } from "../services/api";
 import { DEFAULT_STAGE_VALUE } from "../utils/developmentStages";
 
 const TreesContext = createContext(null);
 
-const initialTrees = [
-  {
-    id: 1,
-    name: "Autumn Flame",
-    species: "Japanese Maple (Acer palmatum)",
-    acquisitionDate: "2018-04-20",
-    currentGirth: 15.3,
-    lastUpdate: "2024-11-15",
-    notes: "Beautiful red leaves in fall. Needs repotting next spring.",
-    developmentStage: "refinement",
-    photoUrl:
-      "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=800&q=80",
-  },
-  {
-    id: 2,
-    name: "Ancient Pine",
-    species: "Japanese Black Pine",
-    acquisitionDate: "2015-06-10",
-    currentGirth: 22.7,
-    lastUpdate: "2024-10-28",
-    notes: "Very healthy. Wire training going well.",
-    developmentStage: "show-eligible",
-    photoUrl:
-      "https://images.unsplash.com/photo-1523475472560-d2df97ec485c?auto=format&fit=crop&w=800&q=80",
-  },
-];
+const resolveUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+  return `${API_BASE_URL}${url}`;
+};
 
 export const TreesProvider = ({ children }) => {
-  const [trees, setTrees] = useState(initialTrees);
+  const [trees, setTrees] = useState([]);
   const [graveyard, setGraveyard] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const addTree = useCallback((treeData) => {
-    setTrees((prev) => {
-      const stageValue =
-        typeof treeData.developmentStage === "string"
-          ? treeData.developmentStage.toLowerCase()
-          : DEFAULT_STAGE_VALUE;
+  const normalizeTree = useCallback((tree) => ({
+    id: tree.id,
+    name: tree.name,
+    species: tree.species,
+    speciesId: tree.species_id,
+    acquisitionDate: tree.acquisition_date,
+    originDate: tree.origin_date,
+    currentGirth: tree.current_girth,
+    trunkWidth: tree.trunk_width,
+    notes: tree.notes,
+    developmentStage: tree.development_stage || DEFAULT_STAGE_VALUE,
+    lastUpdate: tree.last_update,
+    photoUrl: resolveUrl(tree.photo_url),
+  }), []);
 
-      const { photo, photoUrl: providedPhotoUrl, ...rest } = treeData;
-      let photoUrl = providedPhotoUrl ?? null;
-      if (photo instanceof File) {
-        photoUrl = URL.createObjectURL(photo);
-      }
+  const normalizeGraveyardEntry = useCallback((entry) => ({
+    id: entry.id,
+    category: entry.category,
+    note: entry.note,
+    movedAt: entry.moved_at,
+    tree: {
+      id: entry.tree_id,
+      name: entry.tree_name,
+      species: entry.tree_species,
+      photoUrl: resolveUrl(entry.photo_url),
+    },
+  }), []);
 
-      const id = treeData.id ?? Date.now();
+  const refreshTrees = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api.fetchTrees();
+      setTrees((data ?? []).map(normalizeTree));
+    } catch (err) {
+      console.error("Failed to load trees", err);
+      setError(err instanceof Error ? err.message : "Failed to load trees");
+    } finally {
+      setLoading(false);
+    }
+  }, [normalizeTree]);
 
-      return [
-        ...prev,
-        {
-          id,
-          ...rest,
-          photoUrl,
-          lastUpdate: treeData.lastUpdate || treeData.acquisitionDate,
-          developmentStage: stageValue || DEFAULT_STAGE_VALUE,
-        },
-      ];
-    });
-  }, []);
+  const refreshGraveyard = useCallback(async () => {
+    try {
+      const data = await api.fetchGraveyard();
+      setGraveyard((data ?? []).map(normalizeGraveyardEntry));
+    } catch (err) {
+      console.error("Failed to load graveyard", err);
+    }
+  }, [normalizeGraveyardEntry]);
 
-  const getTreeById = useCallback(
-    (treeId) => trees.find((tree) => Number(tree.id) === Number(treeId)) ?? null,
-    [trees]
+  useEffect(() => {
+    refreshTrees();
+    refreshGraveyard();
+  }, [refreshTrees, refreshGraveyard]);
+
+  const addTree = useCallback(
+    async (treeData) => {
+      const response = await api.createTree(treeData);
+      const normalized = normalizeTree(response);
+      setTrees((prev) => [...prev, normalized]);
+      return normalized;
+    },
+    [normalizeTree]
   );
 
-  const moveTreeToGraveyard = useCallback((treeId, { category, note }) => {
-    setTrees((prevTrees) => {
-      const treeToMove = prevTrees.find((tree) => Number(tree.id) === Number(treeId));
-      if (!treeToMove) {
-        return prevTrees;
-      }
+  const getTreeById = useCallback(
+    async (treeId) => {
+      const detail = await api.fetchTreeDetail(treeId);
+      return {
+        ...normalizeTree(detail),
+        photos: (detail.photos ?? []).map((photo) => ({
+          id: photo.id,
+          url: resolveUrl(photo.original_url),
+          thumbnailUrl: resolveUrl(photo.thumbnail_url),
+          originalUrl: resolveUrl(photo.original_url),
+          description: photo.description,
+          date: photo.photo_date,
+        })),
+        updates: (detail.updates ?? []).map((update) => ({
+          id: update.id,
+          date: update.update_date,
+          workPerformed: update.work_performed,
+          girth: update.girth,
+        })),
+      };
+    },
+    [normalizeTree]
+  );
 
+  const moveTreeToGraveyard = useCallback(
+    async (treeId, { category, note }) => {
+      const entry = await api.moveTreeToGraveyard(treeId, { category, note });
+      setTrees((prev) => prev.filter((tree) => Number(tree.id) !== Number(treeId)));
       setGraveyard((prev) => {
-        const filtered = prev.filter((entry) => Number(entry.tree.id) !== Number(treeId));
-        const entry = {
-          id: treeToMove.id,
-          tree: treeToMove,
-          category,
-          note: note?.trim() ?? "",
-          movedAt: new Date().toISOString(),
-        };
-        return [...filtered, entry];
+        const filtered = prev.filter((item) => Number(item.tree.id) !== Number(treeId));
+        return [...filtered, normalizeGraveyardEntry(entry)];
       });
+      return entry;
+    },
+    [normalizeGraveyardEntry]
+  );
 
-      return prevTrees.filter((tree) => Number(tree.id) !== Number(treeId));
-    });
-  }, []);
-
-  const deleteTreePermanently = useCallback((treeId) => {
-    setGraveyard((prev) => prev.filter((entry) => Number(entry.tree.id) !== Number(treeId)));
+  const deleteTreePermanently = useCallback(async (entryId) => {
+    await api.deleteGraveyardEntry(entryId);
+    setGraveyard((prev) => prev.filter((entry) => Number(entry.id) !== Number(entryId)));
   }, []);
 
   const value = useMemo(
@@ -103,8 +142,23 @@ export const TreesProvider = ({ children }) => {
       getTreeById,
       moveTreeToGraveyard,
       deleteTreePermanently,
+      refreshTrees,
+      refreshGraveyard,
+      loading,
+      error,
     }),
-    [trees, graveyard, addTree, getTreeById, moveTreeToGraveyard, deleteTreePermanently]
+    [
+      trees,
+      graveyard,
+      addTree,
+      getTreeById,
+      moveTreeToGraveyard,
+      deleteTreePermanently,
+      refreshTrees,
+      refreshGraveyard,
+      loading,
+      error,
+    ]
   );
 
   return <TreesContext.Provider value={value}>{children}</TreesContext.Provider>;

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -8,7 +8,6 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
-  X,
   CheckCircle,
   Skull,
 } from "lucide-react";
@@ -16,17 +15,12 @@ import TreeCard from "../components/TreeCard";
 import AddTreeModal from "../components/AddTreeModal";
 import AddReminderModal from "../components/AddReminderModal";
 import {
-  appendReminderToStorage,
-  loadStoredReminders,
-  removeReminderFromStorage,
-  saveStoredReminders,
-} from "../utils/reminderStorage";
-import {
   DEVELOPMENT_STAGE_OPTIONS,
   DEFAULT_STAGE_VALUE,
   getStageMeta,
 } from "../utils/developmentStages";
 import { useTrees } from "../context/TreesContext";
+import api from "../services/api";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -39,24 +33,34 @@ const Home = () => {
   const [showAddTree, setShowAddTree] = useState(false);
   const [sortOption, setSortOption] = useState("recent");
 
-  const defaultReminders = [
-    {
-      id: 1,
-      treeId: 1,
-      treeName: "Autumn Flame",
-      message: "Repot in early spring",
-      dueDate: "2025-03-15",
-    },
-  ];
+  const [reminders, setReminders] = useState([]);
+  const [remindersError, setRemindersError] = useState(null);
 
-  const [reminders, setReminders] = useState(() => {
-    const stored = loadStoredReminders();
-    if (stored.length > 0) {
-      return stored;
+  const normalizeReminder = useCallback((reminder) => ({
+    id: reminder.id,
+    treeId: reminder.tree_id,
+    treeName: reminder.tree_name,
+    message: reminder.message,
+    dueDate: reminder.due_date,
+    isCompleted: reminder.is_completed,
+  }), []);
+
+  const refreshReminders = useCallback(async () => {
+    try {
+      setRemindersError(null);
+      const data = await api.fetchReminders();
+      setReminders((data ?? []).map(normalizeReminder));
+    } catch (error) {
+      console.error("Failed to load reminders", error);
+      setRemindersError(
+        error instanceof Error ? error.message : "Failed to load reminders"
+      );
     }
-    saveStoredReminders(defaultReminders);
-    return defaultReminders;
-  });
+  }, [normalizeReminder]);
+
+  useEffect(() => {
+    refreshReminders();
+  }, [refreshReminders]);
 
   // ─── Derived Stats ───────────────────────────────────────────
   const totalTrees = trees.length;
@@ -94,20 +98,27 @@ const Home = () => {
   }, [trees]);
 
   // ─── Reminder Helpers ───────────────────────────────────────────
-  const addReminder = (reminder) => {
-    const newReminder = {
-      ...reminder,
-      id: reminder.id ?? Date.now(),
-    };
-    const updated = appendReminderToStorage(newReminder);
-    setReminders(updated);
-    setShowAddReminder(false);
-  };
+  const addReminder = useCallback(
+    async ({ treeId, message, dueDate }) => {
+      const created = await api.createReminder({
+        tree_id: treeId,
+        message,
+        due_date: dueDate,
+      });
+      setReminders((prev) => [...prev, normalizeReminder(created)]);
+      setShowAddReminder(false);
+    },
+    [normalizeReminder]
+  );
 
-  const handleCompleteReminder = (id) => {
-    const updated = removeReminderFromStorage(id);
-    setReminders(updated);
-  };
+  const handleCompleteReminder = useCallback(async (id) => {
+    try {
+      await api.deleteReminder(id);
+      setReminders((prev) => prev.filter((reminder) => reminder.id !== id));
+    } catch (error) {
+      console.error("Failed to delete reminder", error);
+    }
+  }, []);
 
   const sortedReminders = useMemo(() => {
     return [...reminders].sort(
@@ -196,14 +207,18 @@ const Home = () => {
   };
 
   // ─── Add Tree Logic ───────────────────────────────────────────
-  const handleAddTree = (treeData) => {
+  const handleAddTree = async (treeData) => {
     const stageValue =
       treeData.developmentStage?.toLowerCase() || DEFAULT_STAGE_VALUE;
-    addTree({
-      ...treeData,
-      developmentStage: stageValue,
-    });
-    setShowAddTree(false);
+    try {
+      await addTree({
+        ...treeData,
+        developmentStage: stageValue,
+      });
+      setShowAddTree(false);
+    } catch (error) {
+      console.error("Failed to add tree", error);
+    }
   };
 
   const stageOrder = useMemo(() => {
@@ -444,7 +459,12 @@ const Home = () => {
 
             {showReminders && (
               <div className="px-4 py-4 space-y-6">
-                {reminders.length === 0 && (
+                {remindersError && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    Failed to load reminders: {remindersError}
+                  </div>
+                )}
+                {reminders.length === 0 && !remindersError && (
                   <p className="text-sm text-gray-500 text-center">No reminders yet.</p>
                 )}
 

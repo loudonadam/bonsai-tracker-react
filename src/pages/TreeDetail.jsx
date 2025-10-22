@@ -18,10 +18,7 @@ import {
   Skull,
   AlertTriangle,
 } from "lucide-react";
-import {
-  appendReminderToStorage,
-  loadStoredReminders,
-} from "../utils/reminderStorage";
+import api, { API_BASE_URL } from "../services/api";
 import {
   DEVELOPMENT_STAGE_OPTIONS,
   DEFAULT_STAGE_VALUE,
@@ -87,13 +84,23 @@ const initialAccoladeState = {
   uploadFile: null,
 };
 
+const EMPTY_PHOTO = {
+  id: "placeholder",
+  url: null,
+  thumbnailUrl: null,
+  originalUrl: null,
+  description: "No photo available",
+  date: null,
+};
+
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { getTreeById, moveTreeToGraveyard } = useTrees();
   const numericId = Number(id);
-  const treeFromCollection = getTreeById(numericId);
   const [tree, setTree] = useState(mockTreeData);
+  const [isLoadingTree, setIsLoadingTree] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
@@ -119,11 +126,17 @@ const TreeDetail = () => {
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
-  const [, setReminders] = useState(() => loadStoredReminders());
   const fileInputRef = useRef(null);
   const accoladeFileInputRef = useRef(null);
   const stageMenuRef = useRef(null);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
+
+  const resolveMediaUrl = (url) => {
+    if (!url) return null;
+    return url.startsWith("http://") || url.startsWith("https://")
+      ? url
+      : `${API_BASE_URL}${url}`;
+  };
 
   const stageMeta = useMemo(
     () => getStageMeta(tree.developmentStage),
@@ -169,13 +182,54 @@ const TreeDetail = () => {
   }, [tree?.updates]);
 
   useEffect(() => {
-    if (treeFromCollection) {
-      setTree((prev) => ({
-        ...prev,
-        ...treeFromCollection,
-      }));
-    }
-  }, [treeFromCollection]);
+    let isCancelled = false;
+    const fetchTree = async () => {
+      try {
+        setIsLoadingTree(true);
+        setLoadError(null);
+        const data = await getTreeById(numericId);
+        if (isCancelled || !data) return;
+
+        const normalizedPhotos =
+          Array.isArray(data.photos) && data.photos.length > 0
+            ? data.photos
+            : [EMPTY_PHOTO];
+
+        setTree((prev) => ({
+          ...prev,
+          ...data,
+          photos: normalizedPhotos,
+          updates: Array.isArray(data.updates) ? data.updates : [],
+        }));
+        setEditData({
+          name: data.name ?? "",
+          species: data.species ?? "",
+          acquisitionDate: data.acquisitionDate ?? "",
+          currentGirth:
+            typeof data.currentGirth === "number"
+              ? String(data.currentGirth)
+              : data.currentGirth ?? "",
+          developmentStage: data.developmentStage ?? DEFAULT_STAGE_VALUE,
+          notes: data.notes ?? "",
+        });
+        setCurrentPhotoIndex(0);
+      } catch (error) {
+        if (!isCancelled) {
+          console.error("Failed to load tree", error);
+          setLoadError(error instanceof Error ? error.message : "Failed to load tree");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingTree(false);
+        }
+      }
+    };
+
+    fetchTree();
+    return () => {
+      isCancelled = true;
+    };
+  }, [getTreeById, numericId]);
 
   const selectedAccoladePhoto = useMemo(() => {
     if (newAccolade.uploadPreview) {
@@ -243,21 +297,26 @@ const TreeDetail = () => {
     setIsMovingTree(false);
   };
 
-  const handleMoveToGraveyard = (event) => {
+  const handleMoveToGraveyard = async (event) => {
     event.preventDefault();
-    if (!treeFromCollection) {
+    if (!tree?.id) {
       closeMoveToGraveyardModal();
       return;
     }
 
-    setIsMovingTree(true);
-    moveTreeToGraveyard(tree.id, {
-      category: graveyardForm.category,
-      note: graveyardForm.note,
-    });
-    setIsMovingTree(false);
-    closeMoveToGraveyardModal();
-    navigate("/graveyard");
+    try {
+      setIsMovingTree(true);
+      await moveTreeToGraveyard(tree.id, {
+        category: graveyardForm.category,
+        note: graveyardForm.note,
+      });
+      closeMoveToGraveyardModal();
+      navigate("/graveyard");
+    } catch (error) {
+      console.error("Failed to move tree to graveyard", error);
+    } finally {
+      setIsMovingTree(false);
+    }
   };
 
   const openEditModal = () => {
@@ -518,7 +577,11 @@ const TreeDetail = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSaveUpdate = () => {
+  const handleSaveUpdate = async () => {
+    if (!tree?.id) {
+      return;
+    }
+
     if (!newUpdate.date || !newUpdate.workPerformed.trim()) {
       return;
     }
@@ -538,62 +601,107 @@ const TreeDetail = () => {
         : null;
     const trimmedWork = newUpdate.workPerformed.trim();
 
-    if (editingUpdateId) {
-      setTree((prev) => ({
-        ...prev,
-        updates: prev.updates.map((update) => {
-          if (update.id !== editingUpdateId) {
-            return update;
-          }
+    let isSuccessful = false;
+    try {
+      if (editingUpdateId) {
+        console.warn("Editing updates is not yet synced with the backend.");
+        setTree((prev) => ({
+          ...prev,
+          updates: prev.updates.map((update) => {
+            if (update.id !== editingUpdateId) {
+              return update;
+            }
 
-          return {
-            ...update,
-            date: newUpdate.date,
-            girth:
-              parsedGirth !== null
-                ? parsedGirth
-                : update.girth,
-            workPerformed: trimmedWork,
-          };
-        }),
-      }));
-    } else {
-      setTree((prev) => {
-        const fallbackGirth =
-          parsedGirth !== null
-            ? parsedGirth
-            : typeof prev.updates[0]?.girth === "number"
-            ? prev.updates[0].girth
-            : prev.currentGirth;
+            return {
+              ...update,
+              date: newUpdate.date,
+              girth:
+                parsedGirth !== null
+                  ? parsedGirth
+                  : update.girth,
+              workPerformed: trimmedWork,
+            };
+          }),
+        }));
+      } else {
+        const createdUpdate = await api.createTreeUpdate(tree.id, {
+          update_date: newUpdate.date,
+          girth: parsedGirth ?? undefined,
+          work_performed: trimmedWork,
+        });
 
         const entry = {
-          id: Date.now(),
-          date: newUpdate.date,
-          girth: fallbackGirth,
-          workPerformed: trimmedWork,
+          id: createdUpdate.id,
+          date: createdUpdate.update_date,
+          girth:
+            createdUpdate.girth !== undefined && createdUpdate.girth !== null
+              ? createdUpdate.girth
+              : parsedGirth,
+          workPerformed: createdUpdate.work_performed ?? trimmedWork,
         };
 
-        return {
+        setTree((prev) => ({
           ...prev,
-          updates: [entry, ...prev.updates],
-        };
-      });
+          updates: [entry, ...(prev.updates ?? [])],
+          currentGirth:
+            entry.girth !== null && entry.girth !== undefined
+              ? entry.girth
+              : prev.currentGirth,
+          lastUpdate: entry.date || prev.lastUpdate,
+        }));
 
-      if (newUpdate.addReminder) {
-        const reminder = {
-          id: Date.now(),
-          treeId: tree.id,
-          treeName: tree.name,
-          message: newUpdate.reminderMessage.trim(),
-          dueDate: newUpdate.reminderDueDate,
-        };
-        const updatedReminders = appendReminderToStorage(reminder);
-        setReminders(updatedReminders);
+        if (newUpdate.photoFile) {
+          try {
+            const uploaded = await api.uploadTreePhoto(tree.id, {
+              file: newUpdate.photoFile,
+              description:
+                trimmedWork || `Update photo for ${tree.name}`,
+              photoDate: newUpdate.date,
+            });
+            const normalizedPhoto = {
+              id: uploaded.id,
+              url: resolveMediaUrl(uploaded.original_url),
+              thumbnailUrl: resolveMediaUrl(uploaded.thumbnail_url),
+              originalUrl: resolveMediaUrl(uploaded.original_url),
+              description: uploaded.description,
+              date: uploaded.photo_date,
+            };
+            setTree((prev) => {
+              const remaining = (prev.photos ?? []).filter(
+                (photo) => photo.id !== EMPTY_PHOTO.id
+              );
+              return {
+                ...prev,
+                photos: [normalizedPhoto, ...remaining],
+              };
+            });
+          } catch (photoError) {
+            console.error("Failed to upload update photo", photoError);
+          }
+        }
+
+        if (newUpdate.addReminder) {
+          try {
+            await api.createReminder({
+              tree_id: tree.id,
+              message: newUpdate.reminderMessage.trim(),
+              due_date: newUpdate.reminderDueDate,
+            });
+          } catch (reminderError) {
+            console.error("Failed to create reminder", reminderError);
+          }
+        }
+      }
+      isSuccessful = true;
+    } catch (error) {
+      console.error("Failed to save update", error);
+      alert("Unable to save the update. Please try again.");
+    } finally {
+      if (isSuccessful) {
+        resetUpdateForm();
+        setShowUpdateModal(false);
       }
     }
-
-    resetUpdateForm();
-    setShowUpdateModal(false);
   };
 
   // ─── Tabs ────────────────────────────────────────────────
@@ -794,7 +902,18 @@ const TreeDetail = () => {
     </div>
   );
 
-  if (!treeFromCollection) {
+  if (isLoadingTree) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4 text-gray-600">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
+          <p className="text-sm">Loading tree details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !tree?.id) {
     return (
       <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
         <div className="max-w-md space-y-6">
@@ -802,10 +921,9 @@ const TreeDetail = () => {
             <Skull className="h-8 w-8" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold text-gray-900">Tree not in collection</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">Tree unavailable</h1>
             <p className="text-gray-600">
-              This tree is no longer part of your active collection. Check the Graveyard to review its story or return to your
-              collection overview.
+              {loadError || "This tree is no longer part of your active collection. Check the Graveyard to review its story or return to your collection overview."}
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">

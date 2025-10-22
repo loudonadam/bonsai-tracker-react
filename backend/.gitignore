@@ -1,0 +1,5 @@
+# SQLite database and local media should not be committed
+/data/
+/media/photos/original/
+/media/photos/thumbnails/
+__pycache__/

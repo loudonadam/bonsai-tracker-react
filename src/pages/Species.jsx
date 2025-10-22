@@ -93,13 +93,17 @@ const Species = () => {
     });
   };
 
-  const handleSave = () => {
-    updateSpecies(editingId, {
-      commonName: formData.commonName.trim(),
-      scientificName: formData.scientificName.trim(),
-      notes: formData.notes,
-    });
-    setEditingId(null);
+  const handleSave = async () => {
+    try {
+      await updateSpecies(editingId, {
+        commonName: formData.commonName.trim(),
+        scientificName: formData.scientificName.trim(),
+        notes: formData.notes,
+      });
+      setEditingId(null);
+    } catch (error) {
+      console.error("Failed to update species", error);
+    }
   };
 
   const handleCancel = () => {

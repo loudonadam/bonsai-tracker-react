@@ -6,22 +6,28 @@ import {
 } from "../utils/developmentStages";
 import { useSpecies } from "../context/SpeciesContext";
 
-const AddTreeModal = ({ show, onClose, onSave }) => {
-  const [newTree, setNewTree] = useState({
-    name: "",
-    acquisitionDate: "",
-    originDate: "",
-    trunkWidth: "",
-    notes: "",
-    photo: null,
-    developmentStage: DEFAULT_STAGE_VALUE,
-  });
+const initialTreeState = {
+  name: "",
+  acquisitionDate: "",
+  originDate: "",
+  trunkWidth: "",
+  notes: "",
+  photo: null,
+  developmentStage: DEFAULT_STAGE_VALUE,
+};
 
+const AddTreeModal = ({ show, onClose, onSave }) => {
+  const [newTree, setNewTree] = useState(initialTreeState);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { species: speciesList, addSpecies, incrementTreeCount } = useSpecies();
-  const [speciesMode, setSpeciesMode] = useState("existing");
-  const [selectedSpeciesId, setSelectedSpeciesId] = useState("");
+  const [speciesMode, setSpeciesMode] = useState(
+    speciesList.length > 0 ? "existing" : "new"
+  );
+  const [selectedSpeciesId, setSelectedSpeciesId] = useState(
+    speciesList.length > 0 ? String(speciesList[0].id) : ""
+  );
   const [newSpecies, setNewSpecies] = useState({
     commonName: "",
     scientificName: "",
@@ -29,9 +35,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
   });
 
   const formatSpeciesLabel = (species) => {
-    if (!species) {
-      return "";
-    }
+    if (!species) return "";
     return species.scientificName
       ? `${species.commonName} (${species.scientificName})`
       : species.commonName;
@@ -39,85 +43,93 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
 
   useEffect(() => {
     if (!show) {
-      setNewTree({
-        name: "",
-        acquisitionDate: "",
-        originDate: "",
-        trunkWidth: "",
-        notes: "",
-        photo: null,
-        developmentStage: DEFAULT_STAGE_VALUE,
-      });
+      setNewTree(initialTreeState);
       setPreview(null);
       setError("");
-      setSpeciesMode(speciesList.length > 0 ? "existing" : "new");
-      setSelectedSpeciesId(
-        speciesList.length > 0 ? String(speciesList[0].id) : ""
-      );
+      setIsSubmitting(false);
       setNewSpecies({ commonName: "", scientificName: "", notes: "" });
-    } else if (speciesList.length === 0) {
-      setSpeciesMode("new");
-      setSelectedSpeciesId("");
-    } else if (speciesMode === "existing" && !selectedSpeciesId) {
-      setSelectedSpeciesId(String(speciesList[0].id));
+      if (speciesList.length === 0) {
+        setSpeciesMode("new");
+        setSelectedSpeciesId("");
+      } else {
+        setSpeciesMode("existing");
+        setSelectedSpeciesId(String(speciesList[0].id));
+      }
     }
-  }, [show, speciesList, speciesMode, selectedSpeciesId]);
+  }, [show, speciesList]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
     const { name, acquisitionDate, originDate, developmentStage } = newTree;
     if (!name || !acquisitionDate || !originDate) {
       setError("Please fill in all required fields.");
       return;
     }
 
-    let speciesName = "";
-    let speciesId = null;
-
-    if (speciesMode === "existing") {
-      if (!selectedSpeciesId) {
-        setError("Please choose a species from your library.");
-        return;
-      }
-
-      const selected = speciesList.find(
-        (item) => String(item.id) === String(selectedSpeciesId)
-      );
-
-      if (!selected) {
-        setError("Please choose a species from your library.");
-        return;
-      }
-
-      speciesId = selected.id;
-      speciesName = formatSpeciesLabel(selected);
-      incrementTreeCount(speciesId, 1);
-    } else {
-      if (!newSpecies.commonName.trim()) {
-        setError("Please provide a common name for the new species.");
-        return;
-      }
-
-      const created = addSpecies({
-        commonName: newSpecies.commonName,
-        scientificName: newSpecies.scientificName,
-        notes: newSpecies.notes,
-        treeCount: 1,
-      });
-
-      speciesId = created.id;
-      speciesName = formatSpeciesLabel(created);
-    }
-
+    setIsSubmitting(true);
     setError("");
-    onSave({
-      ...newTree,
-      id: Date.now(),
-      species: speciesName,
-      speciesId,
-      currentGirth: 0,
-      lastUpdate: newTree.acquisitionDate,
-      developmentStage,
-    });
+
+    try {
+      let speciesId = null;
+      let speciesLabel = "";
+
+      if (speciesMode === "existing") {
+        if (!selectedSpeciesId) {
+          throw new Error("Please choose a species from your library.");
+        }
+        const selected = speciesList.find(
+          (item) => String(item.id) === String(selectedSpeciesId)
+        );
+        if (!selected) {
+          throw new Error("Please choose a species from your library.");
+        }
+        speciesId = selected.id;
+        speciesLabel = formatSpeciesLabel(selected);
+      } else {
+        if (!newSpecies.commonName.trim()) {
+          throw new Error("Please provide a common name for the new species.");
+        }
+        const created = await addSpecies({
+          commonName: newSpecies.commonName,
+          scientificName: newSpecies.scientificName,
+          notes: newSpecies.notes,
+          treeCount: 1,
+        });
+        speciesId = created.id;
+        speciesLabel = formatSpeciesLabel(created);
+      }
+
+      const payload = {
+        name: name.trim(),
+        acquisitionDate,
+        originDate,
+        developmentStage,
+        notes: newTree.notes,
+        speciesId,
+        currentGirth: newTree.trunkWidth
+          ? parseFloat(newTree.trunkWidth)
+          : undefined,
+        trunkWidth: newTree.trunkWidth
+          ? parseFloat(newTree.trunkWidth)
+          : undefined,
+        initialPhoto: newTree.photo,
+        initialPhotoDescription: speciesLabel
+          ? `Initial photo for ${speciesLabel}`
+          : "Initial photo",
+        initialPhotoDate: acquisitionDate,
+      };
+
+      await onSave(payload);
+      if (speciesMode === "existing" && speciesId) {
+        incrementTreeCount(speciesId, 1);
+      }
+      onClose();
+    } catch (err) {
+      console.error("Failed to save tree", err);
+      setError(err instanceof Error ? err.message : "Failed to save tree");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!show) return null;
@@ -148,7 +160,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
         )}
 
         <div className="space-y-3">
-          {/* Tree Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Tree Name *
@@ -164,7 +175,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             />
           </div>
 
-          {/* Species */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Species *
@@ -266,7 +276,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* Date Acquired */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Date Acquired *
@@ -281,7 +290,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             />
           </div>
 
-          {/* Estimated Origin Date */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Estimated Origin Date *
@@ -296,7 +304,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             />
           </div>
 
-          {/* Trunk Width */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Trunk Width (cm)
@@ -313,7 +320,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             />
           </div>
 
-          {/* Development Stage */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Development Stage
@@ -336,7 +342,6 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             </select>
           </div>
 
-          {/* Notes */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Notes
@@ -344,82 +349,78 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             <textarea
               rows={3}
               value={newTree.notes}
-              onChange={(e) =>
-                setNewTree({ ...newTree, notes: e.target.value })
-              }
+              onChange={(e) => setNewTree({ ...newTree, notes: e.target.value })}
               placeholder="Optional notes about this tree"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent resize-none"
             />
           </div>
 
-          {/* Photo Upload */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">
-    Upload Photo
-  </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Upload Photo
+            </label>
 
-  <div
-    className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-500 hover:border-green-500 hover:text-green-600 transition cursor-pointer"
-    onClick={() => document.getElementById("photo-upload").click()}
-    onDragOver={(e) => e.preventDefault()}
-    onDrop={(e) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        setNewTree({ ...newTree, photo: file });
-        setPreview(URL.createObjectURL(file));
-      }
-    }}
-  >
-    {preview ? (
-      <img
-        src={preview}
-        alt="Preview"
-        className="rounded-md border border-gray-200 w-32 h-32 object-cover"
-      />
-    ) : (
-      <>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-10 w-10 mb-2 text-gray-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 7H17a4 4 0 010 8h-1"
-          />
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 12v9m0 0l-3-3m3 3l3-3"
-          />
-        </svg>
-        <p className="text-sm font-medium">Click or drag photo to upload</p>
-        <p className="text-xs text-gray-400 mt-1">PNG, JPG, up to 5MB</p>
-      </>
-    )}
-  </div>
-
-  <input
-    type="file"
-    id="photo-upload"
-    accept="image/*"
-    onChange={(e) => {
-      const file = e.target.files[0];
-      if (file) {
-        setNewTree({ ...newTree, photo: file });
-        setPreview(URL.createObjectURL(file));
-      }
-    }}
-    className="hidden"
-  />
-</div>
-
+            <div
+              className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-500 hover:border-green-500 hover:text-green-600 transition cursor-pointer"
+              onClick={() => document.getElementById("photo-upload").click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                  setNewTree({ ...newTree, photo: file });
+                  setPreview(URL.createObjectURL(file));
+                }
+              }}
+            >
+              {preview ? (
+                <img
+                  src={preview}
+                  alt="Preview"
+                  className="rounded-md border border-gray-200 w-32 h-32 object-cover"
+                />
+              ) : (
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-10 w-10 mb-2 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 7H17a4 4 0 010 8h-1"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 12v9m0 0l-3-3m3 3l3-3"
+                    />
+                  </svg>
+                  <p className="text-xs text-gray-500">
+                    Drop a photo here or click to upload
+                  </p>
+                </>
+              )}
+              <input
+                id="photo-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setNewTree({ ...newTree, photo: file });
+                    setPreview(URL.createObjectURL(file));
+                  }
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 mt-6">
@@ -431,9 +432,10 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
           </button>
           <button
             onClick={handleSubmit}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+            disabled={isSubmitting}
+            className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
           >
-            Add Tree
+            {isSubmitting ? "Saving..." : "Add Tree"}
           </button>
         </div>
       </div>

@@ -1,43 +1,54 @@
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 
+const initialFormState = {
+  treeId: "",
+  message: "",
+  dueDate: "",
+};
+
 const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
-  const [form, setForm] = useState({
-    treeId: "",
-    message: "",
-    dueDate: "",
-  });
+  const [form, setForm] = useState(initialFormState);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!show) {
-      setForm({ treeId: "", message: "", dueDate: "" });
+      setForm(initialFormState);
+      setError("");
+      setIsSubmitting(false);
     }
   }, [show]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (!form.treeId || !form.message || !form.dueDate) {
-      alert("Please fill out all fields.");
+      setError("Please fill out all fields.");
       return;
     }
 
-    const tree = trees.find((t) => t.id === parseInt(form.treeId));
+    const tree = trees.find((t) => Number(t.id) === Number(form.treeId));
     if (!tree) {
-      alert("Selected tree not found.");
+      setError("Selected tree not found.");
       return;
     }
 
-    const reminder = {
-      id: Date.now(),
-      treeId: tree.id,
-      treeName: tree.name,
-      message: form.message,
-      dueDate: form.dueDate,
-      isOverdue: new Date(form.dueDate) < new Date(),
-    };
+    setIsSubmitting(true);
+    setError("");
 
-    onSave(reminder);
-    // onSave should close the modal (Home does that) — but we'll also reset here:
-    setForm({ treeId: "", message: "", dueDate: "" });
+    try {
+      await onSave({
+        treeId: Number(form.treeId),
+        message: form.message.trim(),
+        dueDate: form.dueDate,
+      });
+      onClose();
+    } catch (err) {
+      console.error("Failed to add reminder", err);
+      setError(err instanceof Error ? err.message : "Failed to add reminder");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!show) return null;
@@ -54,9 +65,17 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
 
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Add Reminder</h3>
 
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 p-2 rounded-lg mb-3">
+            {error}
+          </p>
+        )}
+
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tree</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tree
+            </label>
             <select
               value={form.treeId}
               onChange={(e) => setForm({ ...form, treeId: e.target.value })}
@@ -72,7 +91,9 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Message
+            </label>
             <input
               type="text"
               value={form.message}
@@ -83,7 +104,9 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Due Date
+            </label>
             <input
               type="date"
               value={form.dueDate}
@@ -101,13 +124,11 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
             Cancel
           </button>
           <button
-            onClick={() => {
-              handleSubmit();
-              // allow parent to close after onSave
-            }}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
           >
-            Add Reminder
+            {isSubmitting ? "Saving..." : "Add Reminder"}
           </button>
         </div>
       </div>
