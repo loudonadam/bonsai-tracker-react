@@ -130,6 +130,44 @@ const TreeDetail = () => {
     [tree.developmentStage]
   );
 
+  const measurementChartData = useMemo(() => {
+    if (!Array.isArray(tree?.updates)) {
+      return [];
+    }
+
+    return tree.updates
+      .filter((update) => {
+        const hasMeasurement = typeof update.girth === "number" && !Number.isNaN(update.girth);
+        const hasDate = Boolean(update.date);
+
+        if (!hasMeasurement || !hasDate) {
+          return false;
+        }
+
+        return update.girth !== 0;
+      })
+      .map((update) => {
+        const parsedDate = new Date(update.date);
+        const timestamp = parsedDate.getTime();
+
+        if (Number.isNaN(timestamp)) {
+          return null;
+        }
+
+        return {
+          dateValue: timestamp,
+          dateLabel: parsedDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          measurement: update.girth,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.dateValue - b.dateValue);
+  }, [tree?.updates]);
+
   useEffect(() => {
     if (treeFromCollection) {
       setTree((prev) => ({
@@ -646,6 +684,76 @@ const TreeDetail = () => {
     </div>
   );
 
+  const MeasurementsTab = () => {
+    if (!RechartsAvailable) {
+      return (
+        <div className="bg-white border border-dashed border-gray-300 rounded-lg p-6 text-center text-sm text-gray-600">
+          Measurement chart is unavailable because the charting library failed to load.
+        </div>
+      );
+    }
+
+    if (measurementChartData.length === 0) {
+      return (
+        <div className="bg-white border border-dashed border-gray-300 rounded-lg p-6 text-center text-sm text-gray-600">
+          No measurement history to display yet.
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Girth Measurements Over Time</h3>
+        <div className="h-72">
+          <ResponsiveContainer>
+            <LineChart data={measurementChartData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="dateValue"
+                type="number"
+                scale="time"
+                domain={["auto", "auto"]}
+                tickFormatter={(value) =>
+                  new Date(value).toLocaleDateString("en-US", {
+                    month: "short",
+                    year: "numeric",
+                  })
+                }
+                tick={{ fontSize: 12, fill: "#4b5563" }}
+                tickMargin={8}
+              />
+              <YAxis
+                dataKey="measurement"
+                tick={{ fontSize: 12, fill: "#4b5563" }}
+                tickMargin={8}
+                width={60}
+                label={{ value: "Girth (cm)", angle: -90, position: "insideLeft", fill: "#4b5563", fontSize: 12 }}
+              />
+              <Tooltip
+                formatter={(value) => [`${value} cm`, "Girth"]}
+                labelFormatter={(label) =>
+                  new Date(label).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                }
+              />
+              <Line
+                type="monotone"
+                dataKey="measurement"
+                stroke="#16a34a"
+                strokeWidth={3}
+                dot={{ r: 4, stroke: "#047857", strokeWidth: 2 }}
+                activeDot={{ r: 6 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  };
+
   const UpdatesTab = () => (
     <div className="space-y-4">
       <button
@@ -839,7 +947,7 @@ const TreeDetail = () => {
 
           <div className="relative">
             <div className="flex flex-wrap gap-x-2 mb-[-1px]">
-              {['overview', 'photos', 'updates'].map((tab) => (
+              {["overview", "photos", "measurements", "updates"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -856,6 +964,7 @@ const TreeDetail = () => {
             <div className="bg-white rounded-b-lg shadow-sm border border-gray-200 p-6">
               {activeTab === 'overview' && <OverviewTab />}
               {activeTab === 'photos' && <PhotosTab />}
+              {activeTab === 'measurements' && <MeasurementsTab />}
               {activeTab === 'updates' && <UpdatesTab />}
             </div>
           </div>
