@@ -19,7 +19,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
 
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
-  const { species: speciesList, addSpecies, incrementTreeCount } = useSpecies();
+  const { species: speciesList, addSpecies, refreshSpecies } = useSpecies();
   const [speciesMode, setSpeciesMode] = useState("existing");
   const [selectedSpeciesId, setSelectedSpeciesId] = useState("");
   const [newSpecies, setNewSpecies] = useState({
@@ -63,7 +63,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
     }
   }, [show, speciesList, speciesMode, selectedSpeciesId]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const { name, acquisitionDate, originDate, developmentStage } = newTree;
     if (!name || !acquisitionDate || !originDate) {
       setError("Please fill in all required fields.");
@@ -90,34 +90,43 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
 
       speciesId = selected.id;
       speciesName = formatSpeciesLabel(selected);
-      incrementTreeCount(speciesId, 1);
     } else {
       if (!newSpecies.commonName.trim()) {
         setError("Please provide a common name for the new species.");
         return;
       }
 
-      const created = addSpecies({
-        commonName: newSpecies.commonName,
-        scientificName: newSpecies.scientificName,
-        notes: newSpecies.notes,
-        treeCount: 1,
-      });
+      try {
+        const created = await addSpecies({
+          commonName: newSpecies.commonName,
+          scientificName: newSpecies.scientificName,
+          notes: newSpecies.notes,
+          treeCount: 1,
+        });
 
-      speciesId = created.id;
-      speciesName = formatSpeciesLabel(created);
+        speciesId = created.id;
+        speciesName = formatSpeciesLabel(created);
+      } catch (submitError) {
+        setError(submitError.message);
+        return;
+      }
     }
 
     setError("");
-    onSave({
-      ...newTree,
-      id: Date.now(),
-      species: speciesName,
-      speciesId,
-      currentGirth: 0,
-      lastUpdate: newTree.acquisitionDate,
-      developmentStage,
-    });
+    try {
+      await onSave({
+        ...newTree,
+        species: speciesName,
+        speciesId,
+        currentGirth: 0,
+        lastUpdate: newTree.acquisitionDate,
+        developmentStage,
+      });
+      await refreshSpecies();
+      onClose();
+    } catch (submitError) {
+      setError(submitError.message);
+    }
   };
 
   if (!show) return null;

@@ -1,88 +1,84 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { apiClient } from "../services/apiClient";
 
 const SpeciesContext = createContext(null);
 
-const initialSpecies = [
-  {
-    id: 1,
-    commonName: "Japanese Maple",
-    scientificName: "Acer palmatum",
-    treeCount: 3,
-    notes: `### Care Overview
-- **Watering:** Keep soil moist but well-drained.
-- **Repotting:** Every 2 years in early spring.
-- **Light:** Partial shade during hot months.
-
-#### Soil
-Use a well-draining bonsai mix. I'll expand this later with exact ratios.`,
-  },
-  {
-    id: 2,
-    commonName: "Chinese Elm",
-    scientificName: "Ulmus parvifolia",
-    treeCount: 2,
-    notes: `### Care Overview
-- **Watering:** Regular watering, reduce in winter.
-- **Pruning:** Trim back new shoots every 3–4 weeks.
-- **Repotting:** Every 2–3 years in late winter.
-
-Tips: This species tolerates wiring well. Replace placeholder text with your template note.`,
-  },
-];
+const mapSpecies = (entry) => ({
+  id: entry.id,
+  commonName: entry.common_name,
+  scientificName: entry.scientific_name ?? "",
+  notes: entry.care_instructions ?? entry.description ?? "",
+  description: entry.description ?? "",
+  careInstructions: entry.care_instructions ?? "",
+  treeCount: entry.tree_count ?? 0,
+  createdAt: entry.created_at,
+  updatedAt: entry.updated_at,
+});
 
 export const SpeciesProvider = ({ children }) => {
-  const [species, setSpecies] = useState(initialSpecies);
+  const [species, setSpecies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const addSpecies = useCallback((data) => {
-    const id = data.id ?? Date.now();
-    const entry = {
-      id,
-      commonName: data.commonName?.trim() || "Untitled Species",
-      scientificName: data.scientificName?.trim() || "",
-      notes: data.notes ?? "",
-      treeCount: Number.isFinite(data.treeCount) ? data.treeCount : 0,
-    };
-
-    setSpecies((prev) => [...prev, entry]);
-    return entry;
-  }, []);
-
-  const updateSpecies = useCallback((id, updates) => {
-    setSpecies((prev) =>
-      prev.map((item) =>
-        Number(item.id) === Number(id)
-          ? {
-              ...item,
-              commonName: updates.commonName?.trim() ?? item.commonName,
-              scientificName: updates.scientificName?.trim() ?? item.scientificName,
-              notes: updates.notes ?? item.notes,
-            }
-          : item
-      )
-    );
-  }, []);
-
-  const incrementTreeCount = useCallback((id, delta = 1) => {
-    if (!delta) {
-      return;
+  const refreshSpecies = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get("/species");
+      setSpecies(response.map(mapSpecies));
+      setError("");
+    } catch (refreshError) {
+      setError(refreshError.message);
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
+  useEffect(() => {
+    refreshSpecies();
+  }, [refreshSpecies]);
+
+  const addSpecies = useCallback(
+    async (data) => {
+      const payload = {
+        common_name: data.commonName?.trim() || "Untitled Species",
+        scientific_name: data.scientificName?.trim() || undefined,
+        description: data.description ?? undefined,
+        care_instructions: data.notes ?? data.careInstructions ?? undefined,
+      };
+      const created = await apiClient.post("/species", payload);
+      const mapped = mapSpecies(created);
+      setSpecies((prev) => [...prev, mapped]);
+      return mapped;
+    },
+    []
+  );
+
+  const updateSpecies = useCallback(async (id, updates) => {
+    const payload = {
+      common_name: updates.commonName,
+      scientific_name: updates.scientificName,
+      description: updates.description,
+      care_instructions: updates.notes ?? updates.careInstructions,
+    };
+    const updated = await apiClient.patch(`/species/${id}`, payload);
+    const mapped = mapSpecies(updated);
     setSpecies((prev) =>
-      prev.map((item) => {
-        if (Number(item.id) !== Number(id)) {
-          return item;
-        }
-
-        const nextCount = (item.treeCount ?? 0) + delta;
-        return { ...item, treeCount: nextCount < 0 ? 0 : nextCount };
-      })
+      prev.map((item) => (Number(item.id) === Number(id) ? mapped : item))
     );
+    return mapped;
   }, []);
 
   const value = useMemo(
-    () => ({ species, addSpecies, updateSpecies, incrementTreeCount }),
-    [species, addSpecies, updateSpecies, incrementTreeCount]
+    () => ({ species, loading, error, refreshSpecies, addSpecies, updateSpecies }),
+    [species, loading, error, refreshSpecies, addSpecies, updateSpecies]
   );
 
   return <SpeciesContext.Provider value={value}>{children}</SpeciesContext.Provider>;

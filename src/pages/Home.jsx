@@ -30,7 +30,7 @@ import { useTrees } from "../context/TreesContext";
 
 const Home = () => {
   const navigate = useNavigate();
-  const { trees, addTree } = useTrees();
+  const { trees, addTree, loading: treesLoading, error: treesError } = useTrees();
 
   // ─── State ───────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -196,14 +196,13 @@ const Home = () => {
   };
 
   // ─── Add Tree Logic ───────────────────────────────────────────
-  const handleAddTree = (treeData) => {
+  const handleAddTree = async (treeData) => {
     const stageValue =
       treeData.developmentStage?.toLowerCase() || DEFAULT_STAGE_VALUE;
-    addTree({
+    return addTree({
       ...treeData,
       developmentStage: stageValue,
     });
-    setShowAddTree(false);
   };
 
   const stageOrder = useMemo(() => {
@@ -514,7 +513,17 @@ const Home = () => {
             </div>
           </div>
 
-          {filteredTrees.length === 0 ? (
+          {treesError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {treesError}
+            </div>
+          )}
+
+          {treesLoading ? (
+            <div className="flex items-center justify-center rounded-lg bg-white p-12 text-gray-600">
+              Loading your collection...
+            </div>
+          ) : filteredTrees.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm p-12 text-center">
               <div className="text-6xl mb-4">🌱</div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
