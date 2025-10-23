@@ -26,7 +26,7 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn backend.main:app --reload
+uvicorn backend.main:app --reload --host 0.0.0.0
 ```
 
 The API will be available at `http://localhost:8000`. Media files are served from `http://localhost:8000/media/...`.
@@ -39,7 +39,7 @@ Install dependencies (only required once):
 npm install
 ```
 
-Create a `.env` file in the project root (next to `package.json`) and point the UI to the FastAPI server:
+Create a `.env` file in the project root (next to `package.json`) and point the UI to the FastAPI server. When developing on another device on your network, replace `localhost` with the machine's IP address or hostname:
 
 ```
 VITE_API_URL=http://localhost:8000
@@ -51,7 +51,7 @@ Start the development server:
 npm run dev
 ```
 
-By default Vite serves the app at `http://localhost:5173`.
+By default Vite serves the app at `http://localhost:5173`. If you access the UI from another device, pass `--host 0.0.0.0` to `npm run dev` and update `VITE_API_URL` so the browser can reach your backend.
 
 ## Image handling
 

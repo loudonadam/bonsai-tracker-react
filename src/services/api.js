@@ -1,4 +1,34 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const normalizeBaseUrl = (value) => value.replace(/\/+$/, "");
+
+const resolveDefaultBaseUrl = () => {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8000";
+  }
+
+  const { protocol, hostname } = window.location;
+  const normalizedProtocol = protocol.endsWith(":")
+    ? protocol.slice(0, -1)
+    : protocol || "http";
+  const defaultPort = normalizedProtocol === "https" ? "8443" : "8000";
+  const hostValue = hostname.includes(":") && !hostname.startsWith("[")
+    ? `[${hostname}]`
+    : hostname;
+  return `${normalizedProtocol}://${hostValue}:${defaultPort}`;
+};
+
+export const API_BASE_URL = normalizeBaseUrl(
+  import.meta.env.VITE_API_URL || resolveDefaultBaseUrl()
+);
+
+const fetchWithNetworkGuard = async (...args) => {
+  try {
+    return await fetch(...args);
+  } catch {
+    throw new Error(
+      "Unable to reach the Bonsai Tracker API. Please ensure the backend server is running and accessible."
+    );
+  }
+};
 
 const jsonHeaders = {
   Accept: "application/json",
@@ -32,12 +62,12 @@ const handleResponse = async (response) => {
 
 export const api = {
   async fetchSpecies() {
-    const response = await fetch(`${API_BASE_URL}/species`);
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/species`);
     return handleResponse(response);
   },
 
   async createSpecies(payload) {
-    const response = await fetch(`${API_BASE_URL}/species`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/species`, {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -46,7 +76,7 @@ export const api = {
   },
 
   async updateSpecies(id, payload) {
-    const response = await fetch(`${API_BASE_URL}/species/${id}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/species/${id}`, {
       method: "PUT",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -55,12 +85,12 @@ export const api = {
   },
 
   async fetchTrees() {
-    const response = await fetch(`${API_BASE_URL}/trees`);
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees`);
     return handleResponse(response);
   },
 
   async fetchTreeDetail(id) {
-    const response = await fetch(`${API_BASE_URL}/trees/${id}`);
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${id}`);
     return handleResponse(response);
   },
 
@@ -79,7 +109,7 @@ export const api = {
       }
     });
 
-    const response = await fetch(`${API_BASE_URL}/trees`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees`, {
       method: "POST",
       body: formData,
     });
@@ -87,7 +117,7 @@ export const api = {
   },
 
   async updateTree(id, payload) {
-    const response = await fetch(`${API_BASE_URL}/trees/${id}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${id}`, {
       method: "PATCH",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -96,7 +126,7 @@ export const api = {
   },
 
   async deleteTree(id) {
-    const response = await fetch(`${API_BASE_URL}/trees/${id}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${id}`, {
       method: "DELETE",
     });
     return handleResponse(response);
@@ -112,7 +142,7 @@ export const api = {
       formData.append("photo_date", photoDate);
     }
 
-    const response = await fetch(`${API_BASE_URL}/trees/${treeId}/photos`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${treeId}/photos`, {
       method: "POST",
       body: formData,
     });
@@ -120,14 +150,14 @@ export const api = {
   },
 
   async deleteTreePhoto(treeId, photoId) {
-    const response = await fetch(`${API_BASE_URL}/trees/${treeId}/photos/${photoId}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${treeId}/photos/${photoId}`, {
       method: "DELETE",
     });
     return handleResponse(response);
   },
 
   async createTreeUpdate(treeId, payload) {
-    const response = await fetch(`${API_BASE_URL}/trees/${treeId}/updates`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${treeId}/updates`, {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -136,19 +166,19 @@ export const api = {
   },
 
   async deleteTreeUpdate(treeId, updateId) {
-    const response = await fetch(`${API_BASE_URL}/trees/${treeId}/updates/${updateId}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${treeId}/updates/${updateId}`, {
       method: "DELETE",
     });
     return handleResponse(response);
   },
 
   async fetchReminders() {
-    const response = await fetch(`${API_BASE_URL}/reminders`);
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/reminders`);
     return handleResponse(response);
   },
 
   async createReminder(payload) {
-    const response = await fetch(`${API_BASE_URL}/reminders`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/reminders`, {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -157,7 +187,7 @@ export const api = {
   },
 
   async updateReminder(id, payload) {
-    const response = await fetch(`${API_BASE_URL}/reminders/${id}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/reminders/${id}`, {
       method: "PATCH",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -166,14 +196,14 @@ export const api = {
   },
 
   async deleteReminder(id) {
-    const response = await fetch(`${API_BASE_URL}/reminders/${id}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/reminders/${id}`, {
       method: "DELETE",
     });
     return handleResponse(response);
   },
 
   async moveTreeToGraveyard(treeId, payload) {
-    const response = await fetch(`${API_BASE_URL}/trees/${treeId}/graveyard`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/trees/${treeId}/graveyard`, {
       method: "POST",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
@@ -182,12 +212,12 @@ export const api = {
   },
 
   async fetchGraveyard() {
-    const response = await fetch(`${API_BASE_URL}/graveyard`);
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/graveyard`);
     return handleResponse(response);
   },
 
   async deleteGraveyardEntry(id) {
-    const response = await fetch(`${API_BASE_URL}/graveyard/${id}`, {
+    const response = await fetchWithNetworkGuard(`${API_BASE_URL}/graveyard/${id}`, {
       method: "DELETE",
     });
     return handleResponse(response);
