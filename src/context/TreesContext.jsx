@@ -8,20 +8,61 @@ import React, {
   useState,
 } from "react";
 import { DEFAULT_STAGE_VALUE } from "../utils/developmentStages";
-import { apiClient } from "../services/apiClient";
+import { apiClient, getApiBaseUrl } from "../services/apiClient";
 
 const TreesContext = createContext(null);
 
-const mapPhoto = (photo) => ({
-  id: photo.id,
-  url: photo.thumbnail_url || photo.full_url,
-  thumbnailUrl: photo.thumbnail_url,
-  fullUrl: photo.full_url,
-  description: photo.description ?? "",
-  date: photo.taken_at ?? null,
-  takenAt: photo.taken_at ?? null,
-  isPrimary: photo.is_primary,
-});
+const MEDIA_URL_CACHE = { origin: undefined };
+
+const resolveMediaUrl = (input) => {
+  if (!input) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(input)) {
+    return input;
+  }
+
+  if (MEDIA_URL_CACHE.origin === undefined) {
+    const baseUrl = getApiBaseUrl();
+    try {
+      const reference =
+        typeof window !== "undefined"
+          ? window.location.href
+          : "http://localhost";
+      const parsed = new URL(baseUrl, reference);
+      MEDIA_URL_CACHE.origin = `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      MEDIA_URL_CACHE.origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+    }
+  }
+
+  if (!MEDIA_URL_CACHE.origin) {
+    return input;
+  }
+
+  const normalized = input.startsWith("/") ? input : `/${input}`;
+  return `${MEDIA_URL_CACHE.origin}${normalized}`;
+};
+
+const mapPhoto = (photo) => {
+  const thumbnail = photo.thumbnail_url ?? photo.thumbnailUrl ?? null;
+  const full = photo.full_url ?? photo.fullUrl ?? null;
+  const resolvedThumbnail = resolveMediaUrl(thumbnail);
+  const resolvedFull = resolveMediaUrl(full);
+
+  return {
+    id: photo.id,
+    url: resolvedThumbnail || resolvedFull,
+    thumbnailUrl: resolvedThumbnail,
+    fullUrl: resolvedFull,
+    description: photo.description ?? "",
+    date: photo.taken_at ?? photo.takenAt ?? null,
+    takenAt: photo.taken_at ?? photo.takenAt ?? null,
+    isPrimary: photo.is_primary ?? photo.isPrimary ?? false,
+  };
+};
 
 const mapUpdate = (entry) => ({
   id: entry.id,
@@ -53,7 +94,14 @@ const mapNotification = (entry) => ({
 });
 
 const mapBonsai = (entry) => {
-  const primaryPhoto = entry.primary_photo || entry.photos?.find((photo) => photo.is_primary) || entry.photos?.[0];
+  const photos = Array.isArray(entry.photos) ? entry.photos.map(mapPhoto) : [];
+
+  let primaryPhoto = null;
+  if (entry.primary_photo) {
+    primaryPhoto = mapPhoto(entry.primary_photo);
+  } else if (photos.length > 0) {
+    primaryPhoto = photos.find((photo) => photo.isPrimary) ?? photos[0];
+  }
   const speciesName = entry.species
     ? `${entry.species.common_name}${entry.species.scientific_name ? ` (${entry.species.scientific_name})` : ""}`
     : "Unknown species";
@@ -74,9 +122,9 @@ const mapBonsai = (entry) => {
       entry.latest_update?.created_at ||
       entry.updated_at,
     currentGirth: entry.latest_measurement?.trunk_diameter_cm ?? null,
-    photoUrl: primaryPhoto?.thumbnail_url || null,
-    fullPhotoUrl: primaryPhoto?.full_url || null,
-    photos: Array.isArray(entry.photos) ? entry.photos.map(mapPhoto) : [],
+    photoUrl: primaryPhoto?.thumbnailUrl || primaryPhoto?.url || null,
+    fullPhotoUrl: primaryPhoto?.fullUrl || null,
+    photos,
     updates: Array.isArray(entry.updates) ? entry.updates.map(mapUpdate) : [],
     measurements: Array.isArray(entry.measurements)
       ? entry.measurements.map(mapMeasurement)
@@ -149,11 +197,13 @@ export const TreesProvider = ({ children }) => {
           formData.append("taken_at", treeData.acquisitionDate);
         }
         const photo = await apiClient.postForm(`/bonsai/${mapped.id}/photos`, formData);
+        const mappedPhoto = mapPhoto(photo);
         mapped = {
           ...mapped,
-          photos: [mapPhoto(photo), ...mapped.photos],
-          photoUrl: photo.thumbnail_url || photo.full_url,
-          fullPhotoUrl: photo.full_url,
+          photos: [mappedPhoto, ...mapped.photos],
+          photoUrl:
+            mappedPhoto.thumbnailUrl || mappedPhoto.url || mappedPhoto.fullUrl,
+          fullPhotoUrl: mappedPhoto.fullUrl,
         };
       }
 

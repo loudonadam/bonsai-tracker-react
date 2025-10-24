@@ -90,7 +90,12 @@ const initialAccoladeState = {
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { getTreeById, moveTreeToGraveyard } = useTrees();
+  const {
+    getTreeById,
+    moveTreeToGraveyard,
+    refreshTrees,
+    loading: treesLoading,
+  } = useTrees();
   const numericId = Number(id);
   const treeFromCollection = getTreeById(numericId);
   const [tree, setTree] = useState(mockTreeData);
@@ -125,10 +130,52 @@ const TreeDetail = () => {
   const stageMenuRef = useRef(null);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
 
+  const hasAttemptedRefreshRef = useRef(false);
+
   const stageMeta = useMemo(
     () => getStageMeta(tree.developmentStage),
     [tree.developmentStage]
   );
+
+  const photoEntries = useMemo(() => {
+    if (Array.isArray(tree.photos) && tree.photos.length > 0) {
+      return tree.photos;
+    }
+
+    const fallbackUrl = tree.photoUrl || tree.fullPhotoUrl || null;
+    return [
+      {
+        id: "placeholder",
+        url: fallbackUrl,
+        thumbnailUrl: fallbackUrl,
+        fullUrl: fallbackUrl,
+        description: fallbackUrl ? "Tree photo" : "No photos yet",
+        date: tree.acquisitionDate ?? null,
+      },
+    ];
+  }, [tree.photos, tree.photoUrl, tree.fullPhotoUrl, tree.acquisitionDate]);
+
+  useEffect(() => {
+    setCurrentPhotoIndex((prev) => {
+      if (prev >= photoEntries.length) {
+        return Math.max(0, photoEntries.length - 1);
+      }
+      if (prev < 0) {
+        return 0;
+      }
+      return prev;
+    });
+  }, [photoEntries.length]);
+
+  useEffect(() => {
+    if (!treeFromCollection && !treesLoading && !hasAttemptedRefreshRef.current) {
+      hasAttemptedRefreshRef.current = true;
+      refreshTrees().catch(() => {
+        // allow a subsequent attempt if needed
+        hasAttemptedRefreshRef.current = false;
+      });
+    }
+  }, [treeFromCollection, treesLoading, refreshTrees]);
 
   const measurementChartData = useMemo(() => {
     if (!Array.isArray(tree?.updates)) {
@@ -301,9 +348,13 @@ const TreeDetail = () => {
   };
 
   const nextPhoto = () =>
-    setCurrentPhotoIndex((prev) => (prev === tree.photos.length - 1 ? 0 : prev + 1));
+    setCurrentPhotoIndex((prev) =>
+      prev === photoEntries.length - 1 ? 0 : prev + 1
+    );
   const prevPhoto = () =>
-    setCurrentPhotoIndex((prev) => (prev === 0 ? tree.photos.length - 1 : prev - 1));
+    setCurrentPhotoIndex((prev) =>
+      prev === 0 ? photoEntries.length - 1 : prev - 1
+    );
 
   const handleExportTree = () => {
     const data = JSON.stringify(tree, null, 2);
@@ -332,7 +383,12 @@ const TreeDetail = () => {
   };
 
   const openPhotoViewer = (photo, options = {}) => {
-    if (!photo || !photo.url) {
+    if (!photo) {
+      return;
+    }
+
+    const displayUrl = photo.fullUrl || photo.url;
+    if (!displayUrl) {
       return;
     }
 
@@ -345,7 +401,7 @@ const TreeDetail = () => {
       (photo.date ? formatDate(photo.date) : undefined);
 
     setFullscreenPhoto({
-      url: photo.url,
+      url: displayUrl,
       title,
       subtitle,
       description: options.description,
@@ -608,16 +664,16 @@ const TreeDetail = () => {
 
   const PhotosTab = () => (
     <div className="space-y-6">
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: '400px' }}>
-        {tree.photos[currentPhotoIndex].url ? (
+      <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: "400px" }}>
+        {photoEntries[currentPhotoIndex].url ? (
           <img
-            src={tree.photos[currentPhotoIndex].url}
-            alt={tree.photos[currentPhotoIndex].description}
+            src={photoEntries[currentPhotoIndex].url}
+            alt={photoEntries[currentPhotoIndex].description}
             className="w-full h-full object-contain cursor-pointer"
             onClick={() =>
-              openPhotoViewer(tree.photos[currentPhotoIndex], {
-                subtitle: tree.photos[currentPhotoIndex].date
-                  ? formatDate(tree.photos[currentPhotoIndex].date)
+              openPhotoViewer(photoEntries[currentPhotoIndex], {
+                subtitle: photoEntries[currentPhotoIndex].date
+                  ? formatDate(photoEntries[currentPhotoIndex].date)
                   : undefined,
               })
             }
@@ -626,9 +682,9 @@ const TreeDetail = () => {
           <div
             className="w-full h-full flex items-center justify-center cursor-pointer"
             onClick={() =>
-              openPhotoViewer(tree.photos[currentPhotoIndex], {
-                subtitle: tree.photos[currentPhotoIndex].date
-                  ? formatDate(tree.photos[currentPhotoIndex].date)
+              openPhotoViewer(photoEntries[currentPhotoIndex], {
+                subtitle: photoEntries[currentPhotoIndex].date
+                  ? formatDate(photoEntries[currentPhotoIndex].date)
                   : undefined,
               })
             }
@@ -652,20 +708,24 @@ const TreeDetail = () => {
 
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
           <div className="text-white text-sm">
-            <p className="opacity-80">{formatDate(tree.photos[currentPhotoIndex].date)}</p>
-            <p>{tree.photos[currentPhotoIndex].description}</p>
+            {photoEntries[currentPhotoIndex].date ? (
+              <p className="opacity-80">{formatDate(photoEntries[currentPhotoIndex].date)}</p>
+            ) : (
+              <p className="opacity-80">No date recorded</p>
+            )}
+            <p>{photoEntries[currentPhotoIndex].description}</p>
           </div>
         </div>
       </div>
 
       <div className="relative overflow-visible flex gap-3 pb-3 pt-3 z-0">
-        {tree.photos.map((photo, index) => (
+        {photoEntries.map((photo, index) => (
           <button
             key={photo.id}
             onClick={() => setCurrentPhotoIndex(index)}
             className={`relative flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 ${index === currentPhotoIndex
-                ? 'border-green-600 scale-110 -translate-y-1 shadow-lg z-20'
-                : 'border-gray-300 hover:border-gray-400'
+                ? "border-green-600 scale-110 -translate-y-1 shadow-lg z-20"
+                : "border-gray-300 hover:border-gray-400"
               }`}
           >
             {photo.url ? (
@@ -795,6 +855,22 @@ const TreeDetail = () => {
   );
 
   if (!treeFromCollection) {
+    if (treesLoading || !hasAttemptedRefreshRef.current) {
+      return (
+        <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
+          <div className="max-w-md space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <Camera className="h-8 w-8" />
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold text-gray-900">Loading tree details</h1>
+              <p className="text-gray-600">Fetching the latest information for this bonsai…</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
         <div className="max-w-md space-y-6">
