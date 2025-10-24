@@ -136,10 +136,72 @@ const TreeDetail = () => {
 
   const hasAttemptedRefreshRef = useRef(false);
 
+  const calculateAge = (dateString) => {
+    if (!dateString) {
+      return null;
+    }
+
+    const start = new Date(dateString);
+    const startTimestamp = start.getTime();
+    if (Number.isNaN(startTimestamp)) {
+      return null;
+    }
+
+    const now = new Date();
+    const years = (now.getTime() - startTimestamp) / (1000 * 60 * 60 * 24 * 365.25);
+    if (!Number.isFinite(years)) {
+      return null;
+    }
+
+    return years.toFixed(1);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) {
+      return "Unknown date";
+    }
+
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown date";
+    }
+
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
   const stageMeta = useMemo(
     () => getStageMeta(tree.developmentStage),
     [tree.developmentStage]
   );
+
+  const ageYears = calculateAge(tree.acquisitionDate);
+  const ageLabel = ageYears ? `${ageYears} years old` : "Age unknown";
+
+  const girthLabel =
+    typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth)
+      ? `${tree.currentGirth} cm girth`
+      : "Girth not recorded";
+
+  const latestUpdate = tree.updates[0];
+  const earliestUpdate = tree.updates[tree.updates.length - 1];
+  const latestUpdateLabel = latestUpdate?.date ? formatDate(latestUpdate.date) : "No updates yet";
+
+  const hasCurrentGirth =
+    typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth);
+  const hasBaselineGirth =
+    typeof earliestUpdate?.girth === "number" && !Number.isNaN(earliestUpdate.girth);
+  const growthLabel = (() => {
+    if (!hasCurrentGirth || !hasBaselineGirth) {
+      return "—";
+    }
+    const growthDelta = tree.currentGirth - earliestUpdate.girth;
+    const prefix = growthDelta >= 0 ? "+" : "";
+    return `${prefix}${growthDelta.toFixed(1)} cm`;
+  })();
 
   const photoEntries = useMemo(() => {
     if (Array.isArray(tree.photos) && tree.photos.length > 0) {
@@ -378,18 +440,6 @@ const TreeDetail = () => {
       notes: editData.notes,
     }));
     setShowEditModal(false);
-  };
-
-  const calculateAge = (dateString) => {
-    const start = new Date(dateString);
-    const now = new Date();
-    const years = (now - start) / (1000 * 60 * 60 * 24 * 365.25);
-    return years.toFixed(1);
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
   const nextPhoto = () =>
@@ -1084,13 +1134,11 @@ const TreeDetail = () => {
               <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium">
-                    {calculateAge(tree.acquisitionDate)} years old
-                  </span>
+                  <span className="font-medium">{ageLabel}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium">{tree.currentGirth} cm girth</span>
+                  <span className="font-medium">{girthLabel}</span>
                 </div>
               </div>
             </div>
@@ -1137,13 +1185,11 @@ const TreeDetail = () => {
               </div>
               <div className="flex justify-between">
                 <span>Last Update:</span>
-                <span>{formatDate(tree.updates[0].date)}</span>
+                <span>{latestUpdateLabel}</span>
               </div>
               <div className="flex justify-between">
                 <span>Growth:</span>
-                <span className="text-green-600">
-                  +{(tree.currentGirth - tree.updates[tree.updates.length - 1].girth).toFixed(1)} cm
-                </span>
+                <span className="text-green-600">{growthLabel}</span>
               </div>
             </div>
           </div>
