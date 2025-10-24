@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Skull,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import {
   appendReminderToStorage,
@@ -94,11 +95,14 @@ const TreeDetail = () => {
     getTreeById,
     moveTreeToGraveyard,
     refreshTrees,
+    fetchTreeById,
     loading: treesLoading,
   } = useTrees();
   const numericId = Number(id);
   const treeFromCollection = getTreeById(numericId);
-  const [tree, setTree] = useState(mockTreeData);
+  const [tree, setTree] = useState(treeFromCollection ?? mockTreeData);
+  const [detailLoading, setDetailLoading] = useState(!treeFromCollection);
+  const [detailError, setDetailError] = useState("");
   const [activeTab, setActiveTab] = useState('overview');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
@@ -221,8 +225,49 @@ const TreeDetail = () => {
         ...prev,
         ...treeFromCollection,
       }));
+      setDetailLoading(false);
+      setDetailError("");
     }
   }, [treeFromCollection]);
+
+  useEffect(() => {
+    if (treeFromCollection || treesLoading || Number.isNaN(numericId)) {
+      return undefined;
+    }
+
+    let isActive = true;
+    setDetailLoading(true);
+    setDetailError("");
+
+    fetchTreeById(numericId)
+      .then((fetched) => {
+        if (!isActive) {
+          return;
+        }
+        setTree((prev) => ({
+          ...prev,
+          ...fetched,
+        }));
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+        setDetailError(error.message);
+      })
+      .finally(() => {
+        if (isActive) {
+          setDetailLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [fetchTreeById, numericId, treeFromCollection, treesLoading]);
+
+  const isHydrating = !treeFromCollection && detailLoading;
+  const hasDetailError = !treeFromCollection && !detailLoading && detailError;
 
   const selectedAccoladePhoto = useMemo(() => {
     if (newAccolade.uploadPreview) {
@@ -854,23 +899,54 @@ const TreeDetail = () => {
     </div>
   );
 
-  if (!treeFromCollection) {
-    if (treesLoading || !hasAttemptedRefreshRef.current) {
-      return (
-        <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
-          <div className="max-w-md space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
-              <Camera className="h-8 w-8" />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold text-gray-900">Loading tree details</h1>
-              <p className="text-gray-600">Fetching the latest information for this bonsai…</p>
-            </div>
+  if (isHydrating || (treesLoading && !hasAttemptedRefreshRef.current)) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
+            <Camera className="h-8 w-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-gray-900">Loading tree details</h1>
+            <p className="text-gray-600">Fetching the latest information for this bonsai…</p>
           </div>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
+  if (hasDetailError) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md space-y-6">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-gray-900">Unable to load tree</h1>
+            <p className="text-gray-600">{detailError}</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button
+              onClick={() => navigate("/")}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            >
+              Back to home
+            </button>
+            <button
+              onClick={() => refreshTrees()}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!treeFromCollection) {
     return (
       <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
         <div className="max-w-md space-y-6">

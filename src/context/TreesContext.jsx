@@ -12,7 +12,7 @@ import { apiClient, getApiBaseUrl } from "../services/apiClient";
 
 const TreesContext = createContext(null);
 
-const MEDIA_URL_CACHE = { origin: undefined };
+const MEDIA_URL_CACHE = { base: undefined };
 
 const resolveMediaUrl = (input) => {
   if (!input) {
@@ -23,7 +23,7 @@ const resolveMediaUrl = (input) => {
     return input;
   }
 
-  if (MEDIA_URL_CACHE.origin === undefined) {
+  if (MEDIA_URL_CACHE.base === undefined) {
     const baseUrl = getApiBaseUrl();
     try {
       const reference =
@@ -31,19 +31,26 @@ const resolveMediaUrl = (input) => {
           ? window.location.href
           : "http://localhost";
       const parsed = new URL(baseUrl, reference);
-      MEDIA_URL_CACHE.origin = `${parsed.protocol}//${parsed.host}`;
+      const pathSegments = parsed.pathname
+        .split("/")
+        .filter(Boolean);
+      if (pathSegments.length > 0) {
+        pathSegments.pop();
+      }
+      const basePath = pathSegments.length > 0 ? `/${pathSegments.join("/")}` : "";
+      MEDIA_URL_CACHE.base = `${parsed.origin}${basePath}`;
     } catch {
-      MEDIA_URL_CACHE.origin =
+      MEDIA_URL_CACHE.base =
         typeof window !== "undefined" ? window.location.origin : "";
     }
   }
 
-  if (!MEDIA_URL_CACHE.origin) {
+  if (!MEDIA_URL_CACHE.base) {
     return input;
   }
 
   const normalized = input.startsWith("/") ? input : `/${input}`;
-  return `${MEDIA_URL_CACHE.origin}${normalized}`;
+  return `${MEDIA_URL_CACHE.base}${normalized}`;
 };
 
 const mapPhoto = (photo) => {
@@ -146,7 +153,7 @@ export const TreesProvider = ({ children }) => {
   const refreshTrees = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get("/bonsai");
+      const response = await apiClient.get("/bonsai/");
       setTrees(response.map(mapBonsai));
       setError("");
     } catch (refreshError) {
@@ -210,11 +217,26 @@ export const TreesProvider = ({ children }) => {
       const detail = await apiClient.get(`/bonsai/${mapped.id}`);
       mapped = mapBonsai(detail);
 
-      setTrees((prev) => [...prev, mapped]);
+      setTrees((prev) => {
+        const filtered = prev.filter(
+          (tree) => Number(tree.id) !== Number(mapped.id)
+        );
+        return [mapped, ...filtered];
+      });
       return mapped;
     },
     []
   );
+
+  const fetchTreeById = useCallback(async (treeId) => {
+    const detail = await apiClient.get(`/bonsai/${treeId}`);
+    const mapped = mapBonsai(detail);
+    setTrees((prev) => {
+      const filtered = prev.filter((tree) => Number(tree.id) !== Number(mapped.id));
+      return [mapped, ...filtered];
+    });
+    return mapped;
+  }, []);
 
   const getTreeById = useCallback(
     (treeId) => trees.find((tree) => Number(tree.id) === Number(treeId)) ?? null,
@@ -259,6 +281,7 @@ export const TreesProvider = ({ children }) => {
       getTreeById,
       moveTreeToGraveyard,
       deleteTreePermanently,
+      fetchTreeById,
     }),
     [
       trees,
@@ -270,6 +293,7 @@ export const TreesProvider = ({ children }) => {
       getTreeById,
       moveTreeToGraveyard,
       deleteTreePermanently,
+      fetchTreeById,
     ]
   );
 
