@@ -37,12 +37,23 @@ const TreeCard = ({
 
   const stageMeta = getStageMeta(tree.developmentStage);
 
-    return (
-      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
-        <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-green-50 to-green-100">
-        {tree.photoUrl ? (
+  const fallbackPhoto = Array.isArray(tree.photos)
+    ? tree.photos.find((photo) => photo.isPrimary) || tree.photos[0]
+    : null;
+
+  const photoSrc =
+    tree.photoUrl ||
+    tree.fullPhotoUrl ||
+    fallbackPhoto?.thumbnailUrl ||
+    fallbackPhoto?.url ||
+    fallbackPhoto?.fullUrl;
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
+      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-green-50 to-green-100">
+        {photoSrc ? (
           <img
-            src={tree.photoUrl}
+            src={photoSrc}
             alt={tree.name}
             className="h-full w-full object-cover"
           />

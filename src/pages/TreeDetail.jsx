@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Skull,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import {
   appendReminderToStorage,
@@ -90,10 +91,18 @@ const initialAccoladeState = {
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { getTreeById, moveTreeToGraveyard } = useTrees();
+  const {
+    getTreeById,
+    moveTreeToGraveyard,
+    refreshTrees,
+    fetchTreeById,
+    loading: treesLoading,
+  } = useTrees();
   const numericId = Number(id);
   const treeFromCollection = getTreeById(numericId);
-  const [tree, setTree] = useState(mockTreeData);
+  const [tree, setTree] = useState(treeFromCollection ?? mockTreeData);
+  const [detailLoading, setDetailLoading] = useState(!treeFromCollection);
+  const [detailError, setDetailError] = useState("");
   const [activeTab, setActiveTab] = useState('overview');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
@@ -125,10 +134,114 @@ const TreeDetail = () => {
   const stageMenuRef = useRef(null);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
 
+  const hasAttemptedRefreshRef = useRef(false);
+
+  const calculateAge = (dateString) => {
+    if (!dateString) {
+      return null;
+    }
+
+    const start = new Date(dateString);
+    const startTimestamp = start.getTime();
+    if (Number.isNaN(startTimestamp)) {
+      return null;
+    }
+
+    const now = new Date();
+    const years = (now.getTime() - startTimestamp) / (1000 * 60 * 60 * 24 * 365.25);
+    if (!Number.isFinite(years)) {
+      return null;
+    }
+
+    return years.toFixed(1);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) {
+      return "Unknown date";
+    }
+
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown date";
+    }
+
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
   const stageMeta = useMemo(
     () => getStageMeta(tree.developmentStage),
     [tree.developmentStage]
   );
+
+  const ageYears = calculateAge(tree.acquisitionDate);
+  const ageLabel = ageYears ? `${ageYears} years old` : "Age unknown";
+
+  const girthLabel =
+    typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth)
+      ? `${tree.currentGirth} cm girth`
+      : "Girth not recorded";
+
+  const latestUpdate = tree.updates[0];
+  const earliestUpdate = tree.updates[tree.updates.length - 1];
+  const latestUpdateLabel = latestUpdate?.date ? formatDate(latestUpdate.date) : "No updates yet";
+
+  const hasCurrentGirth =
+    typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth);
+  const hasBaselineGirth =
+    typeof earliestUpdate?.girth === "number" && !Number.isNaN(earliestUpdate.girth);
+  const growthLabel = (() => {
+    if (!hasCurrentGirth || !hasBaselineGirth) {
+      return "—";
+    }
+    const growthDelta = tree.currentGirth - earliestUpdate.girth;
+    const prefix = growthDelta >= 0 ? "+" : "";
+    return `${prefix}${growthDelta.toFixed(1)} cm`;
+  })();
+
+  const photoEntries = useMemo(() => {
+    if (Array.isArray(tree.photos) && tree.photos.length > 0) {
+      return tree.photos;
+    }
+
+    const fallbackUrl = tree.photoUrl || tree.fullPhotoUrl || null;
+    return [
+      {
+        id: "placeholder",
+        url: fallbackUrl,
+        thumbnailUrl: fallbackUrl,
+        fullUrl: fallbackUrl,
+        description: fallbackUrl ? "Tree photo" : "No photos yet",
+        date: tree.acquisitionDate ?? null,
+      },
+    ];
+  }, [tree.photos, tree.photoUrl, tree.fullPhotoUrl, tree.acquisitionDate]);
+
+  useEffect(() => {
+    setCurrentPhotoIndex((prev) => {
+      if (prev >= photoEntries.length) {
+        return Math.max(0, photoEntries.length - 1);
+      }
+      if (prev < 0) {
+        return 0;
+      }
+      return prev;
+    });
+  }, [photoEntries.length]);
+
+  useEffect(() => {
+    if (!treeFromCollection && !treesLoading && !hasAttemptedRefreshRef.current) {
+      hasAttemptedRefreshRef.current = true;
+      refreshTrees().catch(() => {
+        // allow a subsequent attempt if needed
+        hasAttemptedRefreshRef.current = false;
+      });
+    }
+  }, [treeFromCollection, treesLoading, refreshTrees]);
 
   const measurementChartData = useMemo(() => {
     if (!Array.isArray(tree?.updates)) {
@@ -174,8 +287,49 @@ const TreeDetail = () => {
         ...prev,
         ...treeFromCollection,
       }));
+      setDetailLoading(false);
+      setDetailError("");
     }
   }, [treeFromCollection]);
+
+  useEffect(() => {
+    if (treeFromCollection || treesLoading || Number.isNaN(numericId)) {
+      return undefined;
+    }
+
+    let isActive = true;
+    setDetailLoading(true);
+    setDetailError("");
+
+    fetchTreeById(numericId)
+      .then((fetched) => {
+        if (!isActive) {
+          return;
+        }
+        setTree((prev) => ({
+          ...prev,
+          ...fetched,
+        }));
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+        setDetailError(error.message);
+      })
+      .finally(() => {
+        if (isActive) {
+          setDetailLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [fetchTreeById, numericId, treeFromCollection, treesLoading]);
+
+  const isHydrating = !treeFromCollection && detailLoading;
+  const hasDetailError = !treeFromCollection && !detailLoading && detailError;
 
   const selectedAccoladePhoto = useMemo(() => {
     if (newAccolade.uploadPreview) {
@@ -288,22 +442,14 @@ const TreeDetail = () => {
     setShowEditModal(false);
   };
 
-  const calculateAge = (dateString) => {
-    const start = new Date(dateString);
-    const now = new Date();
-    const years = (now - start) / (1000 * 60 * 60 * 24 * 365.25);
-    return years.toFixed(1);
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  };
-
   const nextPhoto = () =>
-    setCurrentPhotoIndex((prev) => (prev === tree.photos.length - 1 ? 0 : prev + 1));
+    setCurrentPhotoIndex((prev) =>
+      prev === photoEntries.length - 1 ? 0 : prev + 1
+    );
   const prevPhoto = () =>
-    setCurrentPhotoIndex((prev) => (prev === 0 ? tree.photos.length - 1 : prev - 1));
+    setCurrentPhotoIndex((prev) =>
+      prev === 0 ? photoEntries.length - 1 : prev - 1
+    );
 
   const handleExportTree = () => {
     const data = JSON.stringify(tree, null, 2);
@@ -332,7 +478,12 @@ const TreeDetail = () => {
   };
 
   const openPhotoViewer = (photo, options = {}) => {
-    if (!photo || !photo.url) {
+    if (!photo) {
+      return;
+    }
+
+    const displayUrl = photo.fullUrl || photo.url;
+    if (!displayUrl) {
       return;
     }
 
@@ -345,7 +496,7 @@ const TreeDetail = () => {
       (photo.date ? formatDate(photo.date) : undefined);
 
     setFullscreenPhoto({
-      url: photo.url,
+      url: displayUrl,
       title,
       subtitle,
       description: options.description,
@@ -608,16 +759,16 @@ const TreeDetail = () => {
 
   const PhotosTab = () => (
     <div className="space-y-6">
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: '400px' }}>
-        {tree.photos[currentPhotoIndex].url ? (
+      <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: "400px" }}>
+        {photoEntries[currentPhotoIndex].url ? (
           <img
-            src={tree.photos[currentPhotoIndex].url}
-            alt={tree.photos[currentPhotoIndex].description}
+            src={photoEntries[currentPhotoIndex].url}
+            alt={photoEntries[currentPhotoIndex].description}
             className="w-full h-full object-contain cursor-pointer"
             onClick={() =>
-              openPhotoViewer(tree.photos[currentPhotoIndex], {
-                subtitle: tree.photos[currentPhotoIndex].date
-                  ? formatDate(tree.photos[currentPhotoIndex].date)
+              openPhotoViewer(photoEntries[currentPhotoIndex], {
+                subtitle: photoEntries[currentPhotoIndex].date
+                  ? formatDate(photoEntries[currentPhotoIndex].date)
                   : undefined,
               })
             }
@@ -626,9 +777,9 @@ const TreeDetail = () => {
           <div
             className="w-full h-full flex items-center justify-center cursor-pointer"
             onClick={() =>
-              openPhotoViewer(tree.photos[currentPhotoIndex], {
-                subtitle: tree.photos[currentPhotoIndex].date
-                  ? formatDate(tree.photos[currentPhotoIndex].date)
+              openPhotoViewer(photoEntries[currentPhotoIndex], {
+                subtitle: photoEntries[currentPhotoIndex].date
+                  ? formatDate(photoEntries[currentPhotoIndex].date)
                   : undefined,
               })
             }
@@ -652,20 +803,24 @@ const TreeDetail = () => {
 
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
           <div className="text-white text-sm">
-            <p className="opacity-80">{formatDate(tree.photos[currentPhotoIndex].date)}</p>
-            <p>{tree.photos[currentPhotoIndex].description}</p>
+            {photoEntries[currentPhotoIndex].date ? (
+              <p className="opacity-80">{formatDate(photoEntries[currentPhotoIndex].date)}</p>
+            ) : (
+              <p className="opacity-80">No date recorded</p>
+            )}
+            <p>{photoEntries[currentPhotoIndex].description}</p>
           </div>
         </div>
       </div>
 
       <div className="relative overflow-visible flex gap-3 pb-3 pt-3 z-0">
-        {tree.photos.map((photo, index) => (
+        {photoEntries.map((photo, index) => (
           <button
             key={photo.id}
             onClick={() => setCurrentPhotoIndex(index)}
             className={`relative flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 ${index === currentPhotoIndex
-                ? 'border-green-600 scale-110 -translate-y-1 shadow-lg z-20'
-                : 'border-gray-300 hover:border-gray-400'
+                ? "border-green-600 scale-110 -translate-y-1 shadow-lg z-20"
+                : "border-gray-300 hover:border-gray-400"
               }`}
           >
             {photo.url ? (
@@ -793,6 +948,53 @@ const TreeDetail = () => {
       </div>
     </div>
   );
+
+  if (isHydrating || (treesLoading && !hasAttemptedRefreshRef.current)) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
+            <Camera className="h-8 w-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-gray-900">Loading tree details</h1>
+            <p className="text-gray-600">Fetching the latest information for this bonsai…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasDetailError) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-6 py-12 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md space-y-6">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-gray-900">Unable to load tree</h1>
+            <p className="text-gray-600">{detailError}</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button
+              onClick={() => navigate("/")}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            >
+              Back to home
+            </button>
+            <button
+              onClick={() => refreshTrees()}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!treeFromCollection) {
     return (
@@ -932,13 +1134,11 @@ const TreeDetail = () => {
               <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-700">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium">
-                    {calculateAge(tree.acquisitionDate)} years old
-                  </span>
+                  <span className="font-medium">{ageLabel}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium">{tree.currentGirth} cm girth</span>
+                  <span className="font-medium">{girthLabel}</span>
                 </div>
               </div>
             </div>
@@ -985,13 +1185,11 @@ const TreeDetail = () => {
               </div>
               <div className="flex justify-between">
                 <span>Last Update:</span>
-                <span>{formatDate(tree.updates[0].date)}</span>
+                <span>{latestUpdateLabel}</span>
               </div>
               <div className="flex justify-between">
                 <span>Growth:</span>
-                <span className="text-green-600">
-                  +{(tree.currentGirth - tree.updates[tree.updates.length - 1].girth).toFixed(1)} cm
-                </span>
+                <span className="text-green-600">{growthLabel}</span>
               </div>
             </div>
           </div>
