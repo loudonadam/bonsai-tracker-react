@@ -1,9 +1,9 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Calendar, MessageSquare, Skull, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, MessageSquare, Skull, Trash2, RefreshCw } from "lucide-react";
 import { useTrees } from "../context/TreesContext";
 
-const GraveyardSection = ({ title, description, entries, onDelete }) => {
+const GraveyardSection = ({ title, description, entries, onDelete, onRestore }) => {
   if (entries.length === 0) {
     return (
       <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500">
@@ -71,21 +71,30 @@ const GraveyardSection = ({ title, description, entries, onDelete }) => {
                   <AlertTriangle className="w-4 h-4" />
                   <span>This action is permanent</span>
                 </div>
-                <button
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Permanently delete this tree? This cannot be undone."
-                      )
-                    ) {
-                      onDelete(entry.id);
-                    }
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete forever
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={() => onRestore?.(entry.tree.id)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 shadow-sm transition hover:bg-green-100"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Restore to collection
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Permanently delete this tree? This cannot be undone."
+                        )
+                      ) {
+                        onDelete(entry.tree.id);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete forever
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -97,7 +106,7 @@ const GraveyardSection = ({ title, description, entries, onDelete }) => {
 
 const Graveyard = () => {
   const navigate = useNavigate();
-  const { graveyard, deleteTreePermanently } = useTrees();
+  const { graveyard, deleteTreePermanently, restoreTreeFromGraveyard } = useTrees();
 
   const deadTrees = graveyard.filter((entry) => entry.category === "dead");
   const newOwnerTrees = graveyard.filter((entry) => entry.category === "new-owner");
@@ -134,6 +143,7 @@ const Graveyard = () => {
               description="Trees that have passed on will appear here with your notes on what happened."
               entries={deadTrees}
               onDelete={deleteTreePermanently}
+              onRestore={restoreTreeFromGraveyard}
             />
           </div>
 
@@ -144,6 +154,7 @@ const Graveyard = () => {
               description="Sold or gifted trees will live here with their final notes and sale details."
               entries={newOwnerTrees}
               onDelete={deleteTreePermanently}
+              onRestore={restoreTreeFromGraveyard}
             />
           </div>
         </section>

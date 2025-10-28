@@ -100,6 +100,20 @@ const mapNotification = (entry) => ({
   createdAt: entry.created_at,
 });
 
+const mapGraveyardEntry = (entry) => {
+  if (!entry) {
+    return null;
+  }
+
+  return {
+    id: entry.id,
+    bonsaiId: entry.bonsai_id ?? entry.bonsaiId ?? null,
+    category: entry.category ?? "dead",
+    note: entry.note ?? "",
+    movedAt: entry.moved_at ?? entry.movedAt ?? null,
+  };
+};
+
 const mapBonsai = (entry) => {
   const photos = Array.isArray(entry.photos) ? entry.photos.map(mapPhoto) : [];
 
@@ -141,6 +155,7 @@ const mapBonsai = (entry) => {
       : [],
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
+    graveyardEntry: mapGraveyardEntry(entry.graveyard_entry ?? entry.graveyardEntry),
   };
 };
 
@@ -150,11 +165,92 @@ export const TreesProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const partitionCollections = (items) => {
+    const activeTrees = [];
+    const graveyardEntries = [];
+
+    items.forEach((tree) => {
+      const entry = tree.graveyardEntry;
+      if (tree.status === "active" || !entry) {
+        activeTrees.push({ ...tree, graveyardEntry: null });
+      } else {
+        graveyardEntries.push({
+          id: entry.id,
+          tree: { ...tree },
+          category: entry.category ?? "dead",
+          note: entry.note ?? "",
+          movedAt: entry.movedAt,
+        });
+      }
+    });
+
+    return { activeTrees, graveyardEntries };
+  };
+
+  const placeTreeInCollections = useCallback((tree) => {
+    setTrees((prevTrees) => {
+      const filtered = prevTrees.filter((item) => Number(item.id) !== Number(tree.id));
+      if (tree.status === "active" || !tree.graveyardEntry) {
+        return [{ ...tree, graveyardEntry: null }, ...filtered];
+      }
+      return filtered;
+    });
+
+    setGraveyard((prevEntries) => {
+      const filtered = prevEntries.filter(
+        (entry) => Number(entry.tree.id) !== Number(tree.id)
+      );
+      if (tree.status !== "active" && tree.graveyardEntry) {
+        return [
+          {
+            id: tree.graveyardEntry.id,
+            tree: { ...tree },
+            category: tree.graveyardEntry.category ?? "dead",
+            note: tree.graveyardEntry.note ?? "",
+            movedAt: tree.graveyardEntry.movedAt,
+          },
+          ...filtered,
+        ];
+      }
+      return filtered;
+    });
+  }, []);
+
+  const updateTreeReferences = useCallback((treeId, updater) => {
+    let updatedTree = null;
+
+    setTrees((prevTrees) =>
+      prevTrees.map((tree) => {
+        if (Number(tree.id) !== Number(treeId)) {
+          return tree;
+        }
+        updatedTree = updater(tree);
+        return updatedTree;
+      })
+    );
+
+    setGraveyard((prevEntries) =>
+      prevEntries.map((entry) => {
+        if (Number(entry.tree.id) !== Number(treeId)) {
+          return entry;
+        }
+        const nextTree = updater(entry.tree);
+        updatedTree = nextTree;
+        return { ...entry, tree: nextTree };
+      })
+    );
+
+    return updatedTree;
+  }, []);
+
   const refreshTrees = useCallback(async () => {
     try {
       setLoading(true);
       const response = await apiClient.get("/bonsai/");
-      setTrees(response.map(mapBonsai));
+      const mapped = response.map(mapBonsai);
+      const { activeTrees, graveyardEntries } = partitionCollections(mapped);
+      setTrees(activeTrees);
+      setGraveyard(graveyardEntries);
       setError("");
     } catch (refreshError) {
       setError(refreshError.message);
@@ -217,26 +313,18 @@ export const TreesProvider = ({ children }) => {
       const detail = await apiClient.get(`/bonsai/${mapped.id}`);
       mapped = mapBonsai(detail);
 
-      setTrees((prev) => {
-        const filtered = prev.filter(
-          (tree) => Number(tree.id) !== Number(mapped.id)
-        );
-        return [mapped, ...filtered];
-      });
+      placeTreeInCollections(mapped);
       return mapped;
     },
-    []
+    [placeTreeInCollections]
   );
 
   const fetchTreeById = useCallback(async (treeId) => {
     const detail = await apiClient.get(`/bonsai/${treeId}`);
     const mapped = mapBonsai(detail);
-    setTrees((prev) => {
-      const filtered = prev.filter((tree) => Number(tree.id) !== Number(mapped.id));
-      return [mapped, ...filtered];
-    });
+    placeTreeInCollections(mapped);
     return mapped;
-  }, []);
+  }, [placeTreeInCollections]);
 
   const uploadTreePhoto = useCallback(async (treeId, data) => {
     if (!data?.file) {
@@ -262,72 +350,126 @@ export const TreesProvider = ({ children }) => {
     const photo = await apiClient.postForm(`/bonsai/${treeId}/photos`, formData);
     const mappedPhoto = mapPhoto(photo);
 
-    setTrees((prevTrees) => {
-      let isUpdated = false;
-      const updated = prevTrees.map((tree) => {
-        if (Number(tree.id) !== Number(treeId)) {
-          return tree;
+    updateTreeReferences(treeId, (tree) => {
+      const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
+      const updatedPhotos = [mappedPhoto, ...existingPhotos];
+
+      const shouldRefreshPreview =
+        mappedPhoto.isPrimary || !tree.photoUrl || existingPhotos.length === 0;
+
+      return {
+        ...tree,
+        photos: updatedPhotos,
+        photoUrl: shouldRefreshPreview
+          ? mappedPhoto.thumbnailUrl || mappedPhoto.url || mappedPhoto.fullUrl || tree.photoUrl
+          : tree.photoUrl,
+        fullPhotoUrl: shouldRefreshPreview
+          ? mappedPhoto.fullUrl || tree.fullPhotoUrl || mappedPhoto.url || null
+          : tree.fullPhotoUrl,
+      };
+    });
+
+    return mappedPhoto;
+  }, [updateTreeReferences]);
+
+  const getTreeById = useCallback(
+    (treeId) => {
+      const tree = trees.find((item) => Number(item.id) === Number(treeId));
+      if (tree) {
+        return tree;
+      }
+      const graveyardEntry = graveyard.find(
+        (entry) => Number(entry.tree.id) === Number(treeId)
+      );
+      return graveyardEntry?.tree ?? null;
+    },
+    [trees, graveyard]
+  );
+
+  const moveTreeToGraveyard = useCallback(
+    async (treeId, { category, note }) => {
+      await apiClient.post(`/bonsai/${treeId}/graveyard`, {
+        category,
+        note: note?.trim() ?? "",
+      });
+      return fetchTreeById(treeId);
+    },
+    [fetchTreeById]
+  );
+
+  const restoreTreeFromGraveyard = useCallback(
+    async (treeId) => {
+      const detail = await apiClient.post(`/bonsai/${treeId}/restore`, {});
+      const mapped = mapBonsai(detail);
+      placeTreeInCollections(mapped);
+      return mapped;
+    },
+    [placeTreeInCollections]
+  );
+
+  const updateTree = useCallback(
+    async (treeId, data) => {
+      const updated = await apiClient.patch(`/bonsai/${treeId}`, data);
+      const mapped = mapBonsai(updated);
+      placeTreeInCollections(mapped);
+      return mapped;
+    },
+    [placeTreeInCollections]
+  );
+
+  const updateTreePhoto = useCallback(
+    async (treeId, photoId, data) => {
+      const response = await apiClient.patch(
+        `/bonsai/${treeId}/photos/${photoId}`,
+        data
+      );
+      const mappedPhoto = mapPhoto(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
+        let didReplace = false;
+        let updatedPhotos = existingPhotos.map((photo) => {
+          if (Number(photo.id) === Number(photoId)) {
+            didReplace = true;
+            return mappedPhoto;
+          }
+          if (mappedPhoto.isPrimary) {
+            return { ...photo, isPrimary: false };
+          }
+          return photo;
+        });
+
+        if (!didReplace) {
+          updatedPhotos = [mappedPhoto, ...existingPhotos];
         }
 
-        isUpdated = true;
-        const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
-        const updatedPhotos = [mappedPhoto, ...existingPhotos];
-
-        const shouldRefreshPreview =
-          mappedPhoto.isPrimary || !tree.photoUrl || existingPhotos.length === 0;
+        const primaryPhoto =
+          mappedPhoto.isPrimary
+            ? mappedPhoto
+            : updatedPhotos.find((photo) => photo.isPrimary) ?? updatedPhotos[0];
 
         return {
           ...tree,
           photos: updatedPhotos,
-          photoUrl: shouldRefreshPreview
-            ? mappedPhoto.thumbnailUrl || mappedPhoto.url || mappedPhoto.fullUrl || tree.photoUrl
+          photoUrl: primaryPhoto
+            ? primaryPhoto.thumbnailUrl || primaryPhoto.url || primaryPhoto.fullUrl || tree.photoUrl
             : tree.photoUrl,
-          fullPhotoUrl: shouldRefreshPreview
-            ? mappedPhoto.fullUrl || tree.fullPhotoUrl || mappedPhoto.url || null
+          fullPhotoUrl: primaryPhoto
+            ? primaryPhoto.fullUrl || primaryPhoto.url || tree.fullPhotoUrl
             : tree.fullPhotoUrl,
         };
       });
 
-      if (!isUpdated) {
-        return prevTrees;
-      }
-
-      return updated;
-    });
-
-    return mappedPhoto;
-  }, []);
-
-  const getTreeById = useCallback(
-    (treeId) => trees.find((tree) => Number(tree.id) === Number(treeId)) ?? null,
-    [trees]
+      return mappedPhoto;
+    },
+    [updateTreeReferences]
   );
 
-  const moveTreeToGraveyard = useCallback((treeId, { category, note }) => {
-    setTrees((prevTrees) => {
-      const treeToMove = prevTrees.find((tree) => Number(tree.id) === Number(treeId));
-      if (!treeToMove) {
-        return prevTrees;
-      }
-
-      setGraveyard((prev) => {
-        const filtered = prev.filter((entry) => Number(entry.tree.id) !== Number(treeId));
-        const entry = {
-          id: treeToMove.id,
-          tree: treeToMove,
-          category,
-          note: note?.trim() ?? "",
-          movedAt: new Date().toISOString(),
-        };
-        return [...filtered, entry];
-      });
-
-      return prevTrees.filter((tree) => Number(tree.id) !== Number(treeId));
-    });
-  }, []);
-
-  const deleteTreePermanently = useCallback((treeId) => {
-    setGraveyard((prev) => prev.filter((entry) => Number(entry.tree.id) !== Number(treeId)));
+  const deleteTreePermanently = useCallback(async (treeId) => {
+    await apiClient.delete(`/bonsai/${treeId}`);
+    setGraveyard((prev) =>
+      prev.filter((entry) => Number(entry.tree.id) !== Number(treeId))
+    );
   }, []);
 
   const value = useMemo(
@@ -340,9 +482,12 @@ export const TreesProvider = ({ children }) => {
       addTree,
       getTreeById,
       moveTreeToGraveyard,
+      restoreTreeFromGraveyard,
+      updateTree,
       deleteTreePermanently,
       fetchTreeById,
       uploadTreePhoto,
+      updateTreePhoto,
     }),
     [
       trees,
@@ -353,9 +498,12 @@ export const TreesProvider = ({ children }) => {
       addTree,
       getTreeById,
       moveTreeToGraveyard,
+      restoreTreeFromGraveyard,
+      updateTree,
       deleteTreePermanently,
       fetchTreeById,
       uploadTreePhoto,
+      updateTreePhoto,
     ]
   );
 

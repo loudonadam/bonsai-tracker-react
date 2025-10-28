@@ -88,3 +88,30 @@ def delete_photo(bonsai_id: int, photo_id: int, db: Session = Depends(get_db)):
 
     db.delete(photo)
     db.commit()
+
+
+@router.patch("/{bonsai_id}/photos/{photo_id}", response_model=schemas.PhotoOut)
+def update_photo(
+    bonsai_id: int,
+    photo_id: int,
+    payload: schemas.PhotoUpdate,
+    db: Session = Depends(get_db),
+):
+    photo = db.get(models.Photo, photo_id)
+    if not photo or photo.bonsai_id != bonsai_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    if data.get("is_primary"):
+        for existing in photo.bonsai.photos:
+            existing.is_primary = existing.id == photo_id
+            db.add(existing)
+
+    for key, value in data.items():
+        setattr(photo, key, value)
+
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return schemas.PhotoOut.from_model(photo)

@@ -131,6 +131,12 @@ class PhotoOut(BaseModel):
         )
 
 
+class PhotoUpdate(BaseModel):
+    description: Optional[str] = None
+    taken_at: Optional[datetime] = None
+    is_primary: Optional[bool] = None
+
+
 class NotificationBase(BaseModel):
     title: str
     message: str
@@ -159,6 +165,22 @@ class NotificationOut(NotificationBase):
     created_at: datetime
 
 
+class GraveyardEntryBase(BaseModel):
+    category: str
+    note: Optional[str] = None
+
+
+class GraveyardEntryCreate(GraveyardEntryBase):
+    pass
+
+
+class GraveyardEntryOut(GraveyardEntryBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    bonsai_id: int
+    moved_at: datetime
+
 class BonsaiSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -176,6 +198,7 @@ class BonsaiSummary(BaseModel):
     primary_photo: Optional[PhotoOut] = None
     latest_measurement: Optional[MeasurementOut] = None
     latest_update: Optional[BonsaiUpdateOut] = None
+    graveyard_entry: Optional[GraveyardEntryOut] = None
 
     @classmethod
     def from_model(cls, bonsai: models.Bonsai) -> "BonsaiSummary":
@@ -209,6 +232,11 @@ class BonsaiSummary(BaseModel):
             latest_update=BonsaiUpdateOut.model_validate(latest_update)
             if latest_update
             else None,
+            graveyard_entry=(
+                GraveyardEntryOut.model_validate(bonsai.graveyard_entry)
+                if bonsai.graveyard_entry
+                else None
+            ),
         )
 
 

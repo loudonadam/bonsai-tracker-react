@@ -66,6 +66,12 @@ class Bonsai(Base):
     notifications: Mapped[list["Notification"]] = relationship(
         "Notification", back_populates="bonsai", cascade="all, delete-orphan"
     )
+    graveyard_entry: Mapped[Optional["GraveyardEntry"]] = relationship(
+        "GraveyardEntry",
+        back_populates="bonsai",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class BonsaiUpdate(Base):
@@ -140,3 +146,15 @@ class Notification(Base):
     )
 
     bonsai: Mapped[Optional[Bonsai]] = relationship("Bonsai", back_populates="notifications")
+
+
+class GraveyardEntry(Base):
+    __tablename__ = "graveyard_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bonsai_id: Mapped[int] = mapped_column(Integer, ForeignKey("bonsai.id"), unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), default="dead", nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    moved_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    bonsai: Mapped[Bonsai] = relationship("Bonsai", back_populates="graveyard_entry")

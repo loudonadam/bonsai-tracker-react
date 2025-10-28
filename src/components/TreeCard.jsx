@@ -83,11 +83,11 @@ const TreeCard = ({
             <span>{calculateAge(tree.acquisitionDate)} years old</span>
           </div>
 
-          {/* Girth */}
+          {/* Trunk Width */}
           {tree.currentGirth && (
             <div className="flex items-center">
               <Ruler className="mr-2 h-4 w-4 text-green-500" />
-              <span>{tree.currentGirth} cm girth</span>
+              <span>{tree.currentGirth} cm trunk width</span>
             </div>
           )}
 

@@ -106,6 +106,8 @@ const TreeDetail = () => {
     refreshTrees,
     fetchTreeById,
     uploadTreePhoto,
+    updateTree,
+    updateTreePhoto,
     loading: treesLoading,
   } = useTrees();
   const numericId = Number(id);
@@ -130,6 +132,7 @@ const TreeDetail = () => {
     note: "",
   });
   const [isMovingTree, setIsMovingTree] = useState(false);
+  const [isUpdatingStage, setIsUpdatingStage] = useState(false);
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     species: mockTreeData.species,
@@ -148,6 +151,11 @@ const TreeDetail = () => {
   const [newPhoto, setNewPhoto] = useState(initialPhotoUploadState);
   const [addPhotoError, setAddPhotoError] = useState("");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [showEditPhotoModal, setShowEditPhotoModal] = useState(false);
+  const [photoBeingEdited, setPhotoBeingEdited] = useState(null);
+  const [photoEditData, setPhotoEditData] = useState({ takenAt: "", description: "" });
+  const [photoEditError, setPhotoEditError] = useState("");
+  const [isSavingPhotoEdit, setIsSavingPhotoEdit] = useState(false);
 
   const hasAttemptedRefreshRef = useRef(false);
 
@@ -188,6 +196,26 @@ const TreeDetail = () => {
     });
   };
 
+  const formatInputDate = (value) => {
+    if (!value) {
+      return "";
+    }
+
+    if (typeof value === "string" && value.length >= 10) {
+      return value.slice(0, 10);
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const stageMeta = useMemo(
     () => getStageMeta(tree.developmentStage),
     [tree.developmentStage]
@@ -196,21 +224,21 @@ const TreeDetail = () => {
   const ageYears = calculateAge(tree.acquisitionDate);
   const ageLabel = ageYears ? `${ageYears} years old` : "Age unknown";
 
-  const girthLabel =
+  const widthLabel =
     typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth)
-      ? `${tree.currentGirth} cm girth`
-      : "Girth not recorded";
+      ? `${tree.currentGirth} cm trunk width`
+      : "Trunk width not recorded";
 
   const latestUpdate = tree.updates[0];
   const earliestUpdate = tree.updates[tree.updates.length - 1];
   const latestUpdateLabel = latestUpdate?.date ? formatDate(latestUpdate.date) : "No updates yet";
 
-  const hasCurrentGirth =
+  const hasCurrentWidth =
     typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth);
-  const hasBaselineGirth =
+  const hasBaselineWidth =
     typeof earliestUpdate?.girth === "number" && !Number.isNaN(earliestUpdate.girth);
   const growthLabel = (() => {
-    if (!hasCurrentGirth || !hasBaselineGirth) {
+    if (!hasCurrentWidth || !hasBaselineWidth) {
       return "—";
     }
     const growthDelta = tree.currentGirth - earliestUpdate.girth;
@@ -412,7 +440,7 @@ const TreeDetail = () => {
     setIsMovingTree(false);
   };
 
-  const handleMoveToGraveyard = (event) => {
+  const handleMoveToGraveyard = async (event) => {
     event.preventDefault();
     if (!treeFromCollection) {
       closeMoveToGraveyardModal();
@@ -420,13 +448,17 @@ const TreeDetail = () => {
     }
 
     setIsMovingTree(true);
-    moveTreeToGraveyard(tree.id, {
-      category: graveyardForm.category,
-      note: graveyardForm.note,
-    });
-    setIsMovingTree(false);
-    closeMoveToGraveyardModal();
-    navigate("/graveyard");
+    try {
+      await moveTreeToGraveyard(tree.id, {
+        category: graveyardForm.category,
+        note: graveyardForm.note,
+      });
+      closeMoveToGraveyardModal();
+      navigate("/graveyard");
+    } catch (moveError) {
+      console.error("Failed to move tree to graveyard", moveError);
+      setIsMovingTree(false);
+    }
   };
 
   const openEditModal = () => {
@@ -480,16 +512,134 @@ const TreeDetail = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleStageChange = (stageValue) => {
-    setTree((prev) => ({
-      ...prev,
-      developmentStage: stageValue,
-    }));
-    setEditData((prev) => ({
-      ...prev,
-      developmentStage: stageValue,
-    }));
-    setIsStageMenuOpen(false);
+  const handleStageChange = async (stageValue) => {
+    if (!tree?.id || isUpdatingStage) {
+      setIsStageMenuOpen(false);
+      return;
+    }
+
+    const normalizedStage =
+      typeof stageValue === "string" && stageValue.trim() !== ""
+        ? stageValue.toLowerCase()
+        : DEFAULT_STAGE_VALUE;
+
+    setIsUpdatingStage(true);
+    try {
+      const updated = await updateTree(tree.id, {
+        development_stage: normalizedStage,
+      });
+      setTree((prev) => ({
+        ...prev,
+        developmentStage: updated.developmentStage,
+      }));
+      setEditData((prev) => ({
+        ...prev,
+        developmentStage: updated.developmentStage,
+      }));
+    } catch (stageError) {
+      console.error("Failed to update development stage", stageError);
+    } finally {
+      setIsStageMenuOpen(false);
+      setIsUpdatingStage(false);
+    }
+  };
+
+  const resetPhotoEditState = () => {
+    setPhotoBeingEdited(null);
+    setPhotoEditData({ takenAt: "", description: "" });
+    setPhotoEditError("");
+    setIsSavingPhotoEdit(false);
+  };
+
+  const openEditPhotoModal = (photo) => {
+    if (!photo || photo.id === "placeholder") {
+      return;
+    }
+
+    resetPhotoEditState();
+    setPhotoBeingEdited(photo);
+    setPhotoEditData({
+      takenAt: formatInputDate(photo.takenAt ?? photo.date ?? ""),
+      description: photo.description ?? "",
+    });
+    setShowEditPhotoModal(true);
+  };
+
+  const closeEditPhotoModal = () => {
+    setShowEditPhotoModal(false);
+    resetPhotoEditState();
+  };
+
+  const handleSavePhotoEdit = async () => {
+    if (!tree?.id || !photoBeingEdited?.id) {
+      return;
+    }
+
+    setIsSavingPhotoEdit(true);
+    setPhotoEditError("");
+
+    try {
+      const payload = {
+        description: photoEditData.description?.trim() ?? "",
+      };
+      if (photoEditData.takenAt) {
+        payload.taken_at = photoEditData.takenAt;
+      } else {
+        payload.taken_at = null;
+      }
+
+      const updatedPhoto = await updateTreePhoto(
+        tree.id,
+        photoBeingEdited.id,
+        payload
+      );
+
+      setTree((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const existingPhotos = Array.isArray(prev.photos) ? prev.photos : [];
+        let didReplace = false;
+        let updatedPhotos = existingPhotos.map((photo) => {
+          if (Number(photo.id) === Number(updatedPhoto.id)) {
+            didReplace = true;
+            return updatedPhoto;
+          }
+          if (updatedPhoto.isPrimary) {
+            return { ...photo, isPrimary: false };
+          }
+          return photo;
+        });
+
+        if (!didReplace) {
+          updatedPhotos = [updatedPhoto, ...existingPhotos];
+        }
+
+        const primaryPhoto =
+          updatedPhoto.isPrimary
+            ? updatedPhoto
+            : updatedPhotos.find((photo) => photo.isPrimary) ?? updatedPhotos[0];
+
+        return {
+          ...prev,
+          photos: updatedPhotos,
+          photoUrl: primaryPhoto
+            ? primaryPhoto.thumbnailUrl || primaryPhoto.url || primaryPhoto.fullUrl || prev.photoUrl
+            : prev.photoUrl,
+          fullPhotoUrl: primaryPhoto
+            ? primaryPhoto.fullUrl || primaryPhoto.url || prev.fullPhotoUrl
+            : prev.fullPhotoUrl,
+        };
+      });
+
+      resetPhotoEditState();
+      setShowEditPhotoModal(false);
+    } catch (photoError) {
+      console.error("Failed to update photo metadata", photoError);
+      setPhotoEditError(photoError.message ?? "Unable to update photo details.");
+    } finally {
+      setIsSavingPhotoEdit(false);
+    }
   };
 
   const openPhotoViewer = (photo, options = {}) => {
@@ -945,92 +1095,108 @@ const TreeDetail = () => {
     </div>
   );
 
-  const PhotosTab = () => (
-    <div className="space-y-6">
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: "400px" }}>
-        {photoEntries[currentPhotoIndex].url ? (
-          <img
-            src={photoEntries[currentPhotoIndex].url}
-            alt={photoEntries[currentPhotoIndex].description}
-            className="w-full h-full object-contain cursor-pointer"
-            onClick={() =>
-              openPhotoViewer(photoEntries[currentPhotoIndex], {
-                subtitle: photoEntries[currentPhotoIndex].date
-                  ? formatDate(photoEntries[currentPhotoIndex].date)
-                  : undefined,
-              })
-            }
-          />
-        ) : (
-          <div
-            className="w-full h-full flex items-center justify-center cursor-pointer"
-            onClick={() =>
-              openPhotoViewer(photoEntries[currentPhotoIndex], {
-                subtitle: photoEntries[currentPhotoIndex].date
-                  ? formatDate(photoEntries[currentPhotoIndex].date)
-                  : undefined,
-              })
-            }
+  const PhotosTab = () => {
+    const currentPhoto = photoEntries[currentPhotoIndex];
+    const canEditCurrentPhoto = Boolean(
+      currentPhoto?.id && currentPhoto.id !== "placeholder" && tree?.id
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: "400px" }}>
+          {currentPhoto?.url ? (
+            <img
+              src={currentPhoto.url}
+              alt={currentPhoto.description}
+              className="w-full h-full object-contain cursor-pointer"
+              onClick={() =>
+                openPhotoViewer(currentPhoto, {
+                  subtitle: currentPhoto.date ? formatDate(currentPhoto.date) : undefined,
+                })
+              }
+            />
+          ) : (
+            <div
+              className="w-full h-full flex items-center justify-center cursor-pointer"
+              onClick={() =>
+                openPhotoViewer(currentPhoto, {
+                  subtitle: currentPhoto?.date ? formatDate(currentPhoto.date) : undefined,
+                })
+              }
+            >
+              <Camera className="w-24 h-24 text-gray-400" />
+            </div>
+          )}
+
+          <button
+            onClick={prevPhoto}
+            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
           >
-            <Camera className="w-24 h-24 text-gray-400" />
-          </div>
-        )}
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <button
+            onClick={nextPhoto}
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
 
-        <button
-          onClick={prevPhoto}
-          className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <button
-          onClick={nextPhoto}
-          className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
-        >
-          <ChevronRight className="w-6 h-6" />
-        </button>
-
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-          <div className="text-white text-sm">
-            {photoEntries[currentPhotoIndex].date ? (
-              <p className="opacity-80">{formatDate(photoEntries[currentPhotoIndex].date)}</p>
-            ) : (
-              <p className="opacity-80">No date recorded</p>
-            )}
-            <p>{photoEntries[currentPhotoIndex].description}</p>
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+            <div className="text-white text-sm">
+              {currentPhoto?.date ? (
+                <p className="opacity-80">{formatDate(currentPhoto.date)}</p>
+              ) : (
+                <p className="opacity-80">No date recorded</p>
+              )}
+              <p>{currentPhoto?.description}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="relative overflow-visible flex gap-3 pb-3 pt-3 z-0">
-        {photoEntries.map((photo, index) => (
+        <div className="flex justify-end">
           <button
-            key={photo.id}
-            onClick={() => setCurrentPhotoIndex(index)}
-            className={`relative flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 ${index === currentPhotoIndex
-                ? "border-green-600 scale-110 -translate-y-1 shadow-lg z-20"
-                : "border-gray-300 hover:border-gray-400"
-              }`}
+            type="button"
+            onClick={() => openEditPhotoModal(currentPhoto)}
+            disabled={!canEditCurrentPhoto}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {photo.url ? (
-              <img src={photo.url} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                <Camera className="w-8 h-8 text-gray-400" />
-              </div>
-            )}
+            <Edit className="w-4 h-4" />
+            Edit photo info
           </button>
-        ))}
-        <button
-          type="button"
-          onClick={openAddPhotoModal}
-          className="flex-shrink-0 w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 hover:border-green-600 flex items-center justify-center transition"
-          aria-label="Add new photo"
-        >
-          <Plus className="w-8 h-8 text-gray-400" />
-        </button>
+        </div>
+
+        <div className="relative overflow-visible flex gap-3 pb-3 pt-3 z-0">
+          {photoEntries.map((photo, index) => (
+            <button
+              key={photo.id}
+              onClick={() => setCurrentPhotoIndex(index)}
+              className={`relative flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 ${
+                index === currentPhotoIndex
+                  ? "border-green-600 scale-110 -translate-y-1 shadow-lg z-20"
+                  : "border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              {photo.url ? (
+                <img src={photo.url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                  <Camera className="w-8 h-8 text-gray-400" />
+                </div>
+              )}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={openAddPhotoModal}
+            className="flex-shrink-0 w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 hover:border-green-600 flex items-center justify-center transition"
+            aria-label="Add new photo"
+          >
+            <Plus className="w-8 h-8 text-gray-400" />
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const MeasurementsTab = () => {
     if (!RechartsAvailable) {
@@ -1051,7 +1217,7 @@ const TreeDetail = () => {
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Girth Measurements Over Time</h3>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Trunk Width Measurements Over Time</h3>
         <div className="h-72">
           <ResponsiveContainer>
             <LineChart data={measurementChartData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
@@ -1075,10 +1241,10 @@ const TreeDetail = () => {
                 tick={{ fontSize: 12, fill: "#4b5563" }}
                 tickMargin={8}
                 width={60}
-                label={{ value: "Girth (cm)", angle: -90, position: "insideLeft", fill: "#4b5563", fontSize: 12 }}
+                label={{ value: "Trunk Width (cm)", angle: -90, position: "insideLeft", fill: "#4b5563", fontSize: 12 }}
               />
               <Tooltip
-                formatter={(value) => [`${value} cm`, "Girth"]}
+                formatter={(value) => [`${value} cm`, "Trunk Width"]}
                 labelFormatter={(label) =>
                   new Date(label).toLocaleDateString("en-US", {
                     month: "long",
@@ -1124,7 +1290,7 @@ const TreeDetail = () => {
                 {typeof update.girth === 'number' && (
                   <div className="flex items-center gap-2 mt-1">
                     <Ruler className="w-4 h-4" />
-                    <span>{update.girth} cm</span>
+                    <span>{update.girth} cm width</span>
                   </div>
                 )}
               </div>
@@ -1273,7 +1439,8 @@ const TreeDetail = () => {
                 <button
                   type="button"
                   onClick={() => setIsStageMenuOpen((prev) => !prev)}
-                  className="focus:outline-none"
+                  className="focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isUpdatingStage}
                 >
                   <span
                     className={`flex items-center gap-2 text-sm font-semibold ${stageMeta.textClasses}`}
@@ -1296,7 +1463,8 @@ const TreeDetail = () => {
                           <button
                             type="button"
                             onClick={() => handleStageChange(option.value)}
-                            className={`flex w-full items-center justify-between px-4 py-2 text-sm transition hover:bg-gray-50 ${
+                            disabled={isUpdatingStage}
+                            className={`flex w-full items-center justify-between px-4 py-2 text-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 ${
                               option.value === stageMeta.value
                                 ? "text-gray-900"
                                 : "text-gray-600"
@@ -1331,7 +1499,7 @@ const TreeDetail = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium">{girthLabel}</span>
+                  <span className="font-medium">{widthLabel}</span>
                 </div>
               </div>
             </div>
@@ -1381,7 +1549,7 @@ const TreeDetail = () => {
                 <span>{latestUpdateLabel}</span>
               </div>
               <div className="flex justify-between">
-                <span>Growth:</span>
+                <span>Width Change:</span>
                 <span className="text-green-600">{growthLabel}</span>
               </div>
             </div>
@@ -1645,7 +1813,7 @@ const TreeDetail = () => {
             </label>
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Girth (cm)
+              Trunk Width (cm)
               <input
                 type="number"
                 min="0"
@@ -1894,6 +2062,93 @@ const TreeDetail = () => {
                 {isUploadingPhoto ? "Uploading..." : "Upload Photo"}
               </button>
             </div>
+      </div>
+    </div>
+  )}
+
+      {showEditPhotoModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative space-y-4">
+            <button
+              type="button"
+              onClick={closeEditPhotoModal}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+              aria-label="Close photo editor"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-semibold text-gray-800">Edit Photo Details</h3>
+
+            {photoEditError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {photoEditError}
+              </p>
+            )}
+
+            {photoBeingEdited?.url && (
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <img
+                  src={photoBeingEdited.fullUrl || photoBeingEdited.url}
+                  alt={photoBeingEdited.description || 'Tree photo'}
+                  className="h-48 w-full object-cover"
+                />
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Photo Date
+                <input
+                  type="date"
+                  value={photoEditData.takenAt}
+                  onChange={(event) =>
+                    setPhotoEditData((prev) => ({
+                      ...prev,
+                      takenAt: event.target.value,
+                    }))
+                  }
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+                <span className="text-xs text-gray-500">
+                  Update the date associated with this photo.
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Description
+                <textarea
+                  value={photoEditData.description}
+                  onChange={(event) =>
+                    setPhotoEditData((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent resize-none"
+                  placeholder="Describe this photo"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeEditPhotoModal}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePhotoEdit}
+                disabled={isSavingPhotoEdit}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition disabled:cursor-not-allowed disabled:bg-green-300"
+              >
+                {isSavingPhotoEdit ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2079,7 +2334,7 @@ const TreeDetail = () => {
               </label>
 
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
-                Current Girth (cm)
+                Current Trunk Width (cm)
                 <input
                   type="number"
                   step="0.1"
