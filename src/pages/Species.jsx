@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Edit, Plus, BookOpen, Trees } from "lucide-react";
+import { ArrowLeft, Edit, Plus, BookOpen, Trees, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useSpecies } from "../context/SpeciesContext";
 
@@ -76,13 +76,22 @@ const ExpandableNote = ({ content, collapsedHeight = 200 }) => {
 // ─── Species page ─────────────────────────────────────────────
 const Species = () => {
   const navigate = useNavigate();
-  const { species: speciesList, updateSpecies } = useSpecies();
+  const { species: speciesList, updateSpecies, addSpecies } = useSpecies();
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     commonName: "",
     scientificName: "",
     notes: "",
   });
+  const initialAddForm = useRef({
+    commonName: "",
+    scientificName: "",
+    notes: "",
+  }).current;
+  const [isAddingSpecies, setIsAddingSpecies] = useState(false);
+  const [newSpeciesData, setNewSpeciesData] = useState(initialAddForm);
+  const [addSpeciesError, setAddSpeciesError] = useState("");
+  const [isSavingNewSpecies, setIsSavingNewSpecies] = useState(false);
 
   const handleEdit = (species) => {
     setEditingId(species.id);
@@ -106,6 +115,42 @@ const Species = () => {
     setEditingId(null);
   };
 
+  const openAddSpeciesForm = () => {
+    setNewSpeciesData({ ...initialAddForm });
+    setAddSpeciesError("");
+    setIsAddingSpecies(true);
+  };
+
+  const cancelAddSpecies = () => {
+    setIsAddingSpecies(false);
+    setAddSpeciesError("");
+    setNewSpeciesData({ ...initialAddForm });
+  };
+
+  const handleAddSpecies = async () => {
+    const trimmedCommonName = newSpeciesData.commonName.trim();
+    if (!trimmedCommonName) {
+      setAddSpeciesError("Please provide a common name for the species.");
+      return;
+    }
+
+    setIsSavingNewSpecies(true);
+    setAddSpeciesError("");
+    try {
+      await addSpecies({
+        commonName: trimmedCommonName,
+        scientificName: newSpeciesData.scientificName.trim(),
+        notes: newSpeciesData.notes,
+      });
+      setIsAddingSpecies(false);
+      setNewSpeciesData({ ...initialAddForm });
+    } catch (error) {
+      setAddSpeciesError(error.message || "Failed to add species. Please try again.");
+    } finally {
+      setIsSavingNewSpecies(false);
+    }
+  };
+
   return (
     // 🎨 COLOR: Background
     <div className="min-h-screen bg-gray-50">
@@ -119,9 +164,12 @@ const Species = () => {
             <ArrowLeft className="w-5 h-5" />
             <span>Back to Collection</span>
           </button>
-          <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Add Species
+          <button
+            onClick={isAddingSpecies ? cancelAddSpecies : openAddSpeciesForm}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+          >
+            {isAddingSpecies ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {isAddingSpecies ? "Cancel" : "Add Species"}
           </button>
         </div>
         {/* 🎨 COLOR: Accent strip */}
@@ -137,6 +185,67 @@ const Species = () => {
 
           {/* Species Grid (2 columns on >= small screens) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
+            {isAddingSpecies && (
+              <div className="bg-white rounded-lg shadow-sm border border-dashed border-green-300 p-6 flex flex-col gap-3">
+                <h2 className="text-lg font-semibold text-gray-900">Add New Species</h2>
+                {addSpeciesError && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {addSpeciesError}
+                  </p>
+                )}
+                <input
+                  type="text"
+                  value={newSpeciesData.commonName}
+                  onChange={(event) =>
+                    setNewSpeciesData((prev) => ({
+                      ...prev,
+                      commonName: event.target.value,
+                    }))
+                  }
+                  placeholder="Common Name *"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="text"
+                  value={newSpeciesData.scientificName}
+                  onChange={(event) =>
+                    setNewSpeciesData((prev) => ({
+                      ...prev,
+                      scientificName: event.target.value,
+                    }))
+                  }
+                  placeholder="Scientific Name"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
+                />
+                <textarea
+                  value={newSpeciesData.notes}
+                  onChange={(event) =>
+                    setNewSpeciesData((prev) => ({
+                      ...prev,
+                      notes: event.target.value,
+                    }))
+                  }
+                  placeholder="Add care notes (Markdown supported)"
+                  rows={6}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono resize-y"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={cancelAddSpecies}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddSpecies}
+                    disabled={isSavingNewSpecies}
+                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed text-sm"
+                  >
+                    {isSavingNewSpecies ? "Saving..." : "Save Species"}
+                  </button>
+                </div>
+              </div>
+            )}
             {speciesList.map((species) => (
               <div
                 key={species.id}

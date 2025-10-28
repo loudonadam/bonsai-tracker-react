@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -29,6 +29,7 @@ import {
   getStageMeta,
 } from "../utils/developmentStages";
 import { useTrees } from "../context/TreesContext";
+import { extractPhotoDate } from "../utils/photoMetadata";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -88,6 +89,14 @@ const initialAccoladeState = {
   uploadFile: null,
 };
 
+const initialPhotoUploadState = {
+  file: null,
+  preview: null,
+  description: "",
+  takenAt: "",
+  isPrimary: false,
+};
+
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -96,6 +105,7 @@ const TreeDetail = () => {
     moveTreeToGraveyard,
     refreshTrees,
     fetchTreeById,
+    uploadTreePhoto,
     loading: treesLoading,
   } = useTrees();
   const numericId = Number(id);
@@ -131,8 +141,13 @@ const TreeDetail = () => {
   const [, setReminders] = useState(() => loadStoredReminders());
   const fileInputRef = useRef(null);
   const accoladeFileInputRef = useRef(null);
+  const photoUploadInputRef = useRef(null);
   const stageMenuRef = useRef(null);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
+  const [showAddPhotoModal, setShowAddPhotoModal] = useState(false);
+  const [newPhoto, setNewPhoto] = useState(initialPhotoUploadState);
+  const [addPhotoError, setAddPhotoError] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const hasAttemptedRefreshRef = useRef(false);
 
@@ -667,7 +682,180 @@ const TreeDetail = () => {
       }));
     };
     reader.readAsDataURL(file);
+
+    extractPhotoDate(file)
+      .then((extracted) => {
+        if (!extracted) {
+          return;
+        }
+
+        setNewUpdate((prev) => {
+          if (prev.photoFile !== file || prev.date) {
+            return prev;
+          }
+          return {
+            ...prev,
+            date: extracted,
+          };
+        });
+      })
+      .catch((metadataError) => {
+        console.warn("Failed to read update photo metadata", metadataError);
+      });
   };
+
+  const resetPhotoForm = useCallback(() => {
+    setNewPhoto((prev) => {
+      if (prev.preview) {
+        URL.revokeObjectURL(prev.preview);
+      }
+      return { ...initialPhotoUploadState };
+    });
+    if (photoUploadInputRef.current) {
+      photoUploadInputRef.current.value = "";
+    }
+    setAddPhotoError("");
+    setIsUploadingPhoto(false);
+  }, [photoUploadInputRef]);
+
+  const openAddPhotoModal = useCallback(() => {
+    resetPhotoForm();
+    setShowAddPhotoModal(true);
+  }, [resetPhotoForm]);
+
+  const closeAddPhotoModal = useCallback(() => {
+    setShowAddPhotoModal(false);
+    resetPhotoForm();
+  }, [resetPhotoForm]);
+
+  const applySelectedPhoto = useCallback(async (file) => {
+    if (!file) {
+      setNewPhoto((prev) => {
+        if (prev.preview) {
+          URL.revokeObjectURL(prev.preview);
+        }
+        return {
+          ...prev,
+          file: null,
+          preview: null,
+          takenAt: "",
+        };
+      });
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setNewPhoto((prev) => {
+      if (prev.preview) {
+        URL.revokeObjectURL(prev.preview);
+      }
+      return {
+        ...prev,
+        file,
+        preview: objectUrl,
+        takenAt: "",
+      };
+    });
+
+    try {
+      const extracted = await extractPhotoDate(file);
+      if (extracted) {
+        setNewPhoto((prev) => {
+          if (prev.file !== file || prev.takenAt) {
+            return prev;
+          }
+          return {
+            ...prev,
+            takenAt: extracted,
+          };
+        });
+      }
+    } catch (metadataError) {
+      console.warn("Failed to extract photo metadata", metadataError);
+    }
+  }, []);
+
+  const handlePhotoInputChange = async (event) => {
+    const file = event.target.files?.[0];
+    await applySelectedPhoto(file || null);
+  };
+
+  const handlePhotoDrop = async (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    await applySelectedPhoto(file || null);
+  };
+
+  const handlePhotoDragOver = (event) => {
+    event.preventDefault();
+  };
+
+  const handleUploadNewPhoto = async () => {
+    if (!newPhoto.file) {
+      setAddPhotoError("Please choose a photo to upload.");
+      return;
+    }
+
+    if (!tree?.id) {
+      setAddPhotoError("Tree details are still loading. Please try again.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setAddPhotoError("");
+
+    try {
+      const payload = {
+        file: newPhoto.file,
+      };
+      const trimmedDescription = newPhoto.description.trim();
+      if (trimmedDescription) {
+        payload.description = trimmedDescription;
+      }
+      if (newPhoto.takenAt) {
+        payload.takenAt = newPhoto.takenAt;
+      }
+      if (newPhoto.isPrimary) {
+        payload.isPrimary = true;
+      }
+
+      const uploaded = await uploadTreePhoto(tree.id, payload);
+      setTree((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const updatedPhotos = [uploaded, ...(prev.photos ?? [])];
+        const updatedTree = {
+          ...prev,
+          photos: updatedPhotos,
+        };
+        if (uploaded.isPrimary) {
+          updatedTree.photoUrl =
+            uploaded.thumbnailUrl ||
+            uploaded.url ||
+            uploaded.fullUrl ||
+            prev.photoUrl;
+          updatedTree.fullPhotoUrl =
+            uploaded.fullUrl || prev.fullPhotoUrl || uploaded.url || null;
+        }
+        return updatedTree;
+      });
+      setCurrentPhotoIndex(0);
+      closeAddPhotoModal();
+    } catch (error) {
+      setAddPhotoError(error.message || "Failed to upload photo. Please try again.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (newPhoto.preview) {
+        URL.revokeObjectURL(newPhoto.preview);
+      }
+    };
+  }, [newPhoto.preview]);
 
   const handleSaveUpdate = () => {
     if (!newUpdate.date || !newUpdate.workPerformed.trim()) {
@@ -832,7 +1020,12 @@ const TreeDetail = () => {
             )}
           </button>
         ))}
-        <button className="flex-shrink-0 w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 hover:border-green-600 flex items-center justify-center transition">
+        <button
+          type="button"
+          onClick={openAddPhotoModal}
+          className="flex-shrink-0 w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 hover:border-green-600 flex items-center justify-center transition"
+          aria-label="Add new photo"
+        >
           <Plus className="w-8 h-8 text-gray-400" />
         </button>
       </div>
@@ -1578,6 +1771,127 @@ const TreeDetail = () => {
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
               >
                 {editingUpdateId ? 'Save Changes' : 'Save Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddPhotoModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative space-y-4">
+            <button
+              type="button"
+              onClick={closeAddPhotoModal}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+              aria-label="Close photo uploader"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-semibold text-gray-800">Upload Tree Photo</h3>
+
+            {addPhotoError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {addPhotoError}
+              </p>
+            )}
+
+            <div
+              className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-500 hover:border-green-500 hover:text-green-600 transition cursor-pointer"
+              onClick={() => photoUploadInputRef.current?.click()}
+              onDrop={handlePhotoDrop}
+              onDragOver={handlePhotoDragOver}
+            >
+              {newPhoto.preview ? (
+                <img
+                  src={newPhoto.preview}
+                  alt="Selected tree"
+                  className="rounded-md border border-gray-200 w-full h-48 object-cover"
+                />
+              ) : (
+                <>
+                  <Camera className="h-10 w-10 mb-2 text-gray-400" />
+                  <p className="text-sm font-medium">Click or drag photo to upload</p>
+                  <p className="text-xs text-gray-400 mt-1">PNG or JPG, up to 10MB</p>
+                </>
+              )}
+            </div>
+
+            <input
+              ref={photoUploadInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoInputChange}
+            />
+
+            <div className="space-y-3">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Photo Date
+                <input
+                  type="date"
+                  value={newPhoto.takenAt}
+                  onChange={(event) =>
+                    setNewPhoto((prev) => ({
+                      ...prev,
+                      takenAt: event.target.value,
+                    }))
+                  }
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                />
+                <span className="text-xs text-gray-500">
+                  Automatically extracted from the photo metadata. You can adjust it here.
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Description
+                <textarea
+                  value={newPhoto.description}
+                  onChange={(event) =>
+                    setNewPhoto((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent resize-none"
+                  placeholder="Add an optional caption"
+                />
+              </label>
+
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newPhoto.isPrimary}
+                  onChange={(event) =>
+                    setNewPhoto((prev) => ({
+                      ...prev,
+                      isPrimary: event.target.checked,
+                    }))
+                  }
+                  className="rounded border-gray-300 text-green-600 focus:ring-green-600"
+                />
+                Make this the primary photo
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeAddPhotoModal}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadNewPhoto}
+                disabled={isUploadingPhoto}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed transition"
+              >
+                {isUploadingPhoto ? "Uploading..." : "Upload Photo"}
               </button>
             </div>
           </div>

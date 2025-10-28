@@ -238,6 +238,66 @@ export const TreesProvider = ({ children }) => {
     return mapped;
   }, []);
 
+  const uploadTreePhoto = useCallback(async (treeId, data) => {
+    if (!data?.file) {
+      throw new Error("A photo file is required.");
+    }
+
+    if (typeof File !== "undefined" && !(data.file instanceof File)) {
+      throw new Error("The provided photo must be a valid file object.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", data.file);
+    if (data.description) {
+      formData.append("description", data.description);
+    }
+    if (data.takenAt) {
+      formData.append("taken_at", data.takenAt);
+    }
+    if (data.isPrimary) {
+      formData.append("is_primary", "true");
+    }
+
+    const photo = await apiClient.postForm(`/bonsai/${treeId}/photos`, formData);
+    const mappedPhoto = mapPhoto(photo);
+
+    setTrees((prevTrees) => {
+      let isUpdated = false;
+      const updated = prevTrees.map((tree) => {
+        if (Number(tree.id) !== Number(treeId)) {
+          return tree;
+        }
+
+        isUpdated = true;
+        const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
+        const updatedPhotos = [mappedPhoto, ...existingPhotos];
+
+        const shouldRefreshPreview =
+          mappedPhoto.isPrimary || !tree.photoUrl || existingPhotos.length === 0;
+
+        return {
+          ...tree,
+          photos: updatedPhotos,
+          photoUrl: shouldRefreshPreview
+            ? mappedPhoto.thumbnailUrl || mappedPhoto.url || mappedPhoto.fullUrl || tree.photoUrl
+            : tree.photoUrl,
+          fullPhotoUrl: shouldRefreshPreview
+            ? mappedPhoto.fullUrl || tree.fullPhotoUrl || mappedPhoto.url || null
+            : tree.fullPhotoUrl,
+        };
+      });
+
+      if (!isUpdated) {
+        return prevTrees;
+      }
+
+      return updated;
+    });
+
+    return mappedPhoto;
+  }, []);
+
   const getTreeById = useCallback(
     (treeId) => trees.find((tree) => Number(tree.id) === Number(treeId)) ?? null,
     [trees]
@@ -282,6 +342,7 @@ export const TreesProvider = ({ children }) => {
       moveTreeToGraveyard,
       deleteTreePermanently,
       fetchTreeById,
+      uploadTreePhoto,
     }),
     [
       trees,
@@ -294,6 +355,7 @@ export const TreesProvider = ({ children }) => {
       moveTreeToGraveyard,
       deleteTreePermanently,
       fetchTreeById,
+      uploadTreePhoto,
     ]
   );
 

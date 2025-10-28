@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import {
   DEVELOPMENT_STAGE_OPTIONS,
   DEFAULT_STAGE_VALUE,
 } from "../utils/developmentStages";
 import { useSpecies } from "../context/SpeciesContext";
+import { extractPhotoDate } from "../utils/photoMetadata";
 
 const AddTreeModal = ({ show, onClose, onSave }) => {
   const [newTree, setNewTree] = useState({
@@ -48,6 +49,9 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
         photo: null,
         developmentStage: DEFAULT_STAGE_VALUE,
       });
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
       setPreview(null);
       setError("");
       setSpeciesMode(speciesList.length > 0 ? "existing" : "new");
@@ -61,7 +65,49 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
     } else if (speciesMode === "existing" && !selectedSpeciesId) {
       setSelectedSpeciesId(String(speciesList[0].id));
     }
-  }, [show, speciesList, speciesMode, selectedSpeciesId]);
+  }, [show, speciesList, speciesMode, selectedSpeciesId, preview]);
+
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
+
+  const applyPhotoSelection = useCallback(
+    async (file) => {
+      if (!file) {
+        setNewTree((prev) => ({ ...prev, photo: null }));
+        if (preview) {
+          URL.revokeObjectURL(preview);
+        }
+        setPreview(null);
+        return;
+      }
+
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      setPreview(objectUrl);
+      setNewTree((prev) => ({ ...prev, photo: file }));
+
+      try {
+        const extracted = await extractPhotoDate(file);
+        if (extracted) {
+          setNewTree((prev) => ({
+            ...prev,
+            acquisitionDate: prev.acquisitionDate || extracted,
+          }));
+        }
+      } catch (metadataError) {
+        console.warn("Failed to extract photo metadata", metadataError);
+      }
+    },
+    [preview]
+  );
 
   const handleSubmit = async () => {
     const { name, acquisitionDate, originDate, developmentStage } = newTree;
@@ -371,13 +417,10 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
     className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center text-gray-500 hover:border-green-500 hover:text-green-600 transition cursor-pointer"
     onClick={() => document.getElementById("photo-upload").click()}
     onDragOver={(e) => e.preventDefault()}
-    onDrop={(e) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        setNewTree({ ...newTree, photo: file });
-        setPreview(URL.createObjectURL(file));
-      }
+    onDrop={async (event) => {
+      event.preventDefault();
+      const file = event.dataTransfer.files[0];
+      await applyPhotoSelection(file);
     }}
   >
     {preview ? (
@@ -418,12 +461,9 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
     type="file"
     id="photo-upload"
     accept="image/*"
-    onChange={(e) => {
-      const file = e.target.files[0];
-      if (file) {
-        setNewTree({ ...newTree, photo: file });
-        setPreview(URL.createObjectURL(file));
-      }
+    onChange={async (event) => {
+      const file = event.target.files[0];
+      await applyPhotoSelection(file);
     }}
     className="hidden"
   />
