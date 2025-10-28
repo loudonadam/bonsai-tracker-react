@@ -30,6 +30,8 @@ import {
 } from "../utils/developmentStages";
 import { useTrees } from "../context/TreesContext";
 import { extractPhotoDate } from "../utils/photoMetadata";
+import { useSpecies } from "../context/SpeciesContext";
+import ReactMarkdown from "react-markdown";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -97,6 +99,12 @@ const initialPhotoUploadState = {
   isPrimary: false,
 };
 
+const initialSpeciesFormState = {
+  commonName: "",
+  scientificName: "",
+  notes: "",
+};
+
 const TreeDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -110,6 +118,7 @@ const TreeDetail = () => {
     updateTreePhoto,
     loading: treesLoading,
   } = useTrees();
+  const { species: speciesList, addSpecies, refreshSpecies } = useSpecies();
   const numericId = Number(id);
   const treeFromCollection = getTreeById(numericId);
   const [tree, setTree] = useState(treeFromCollection ?? mockTreeData);
@@ -135,12 +144,20 @@ const TreeDetail = () => {
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
-    species: mockTreeData.species,
     acquisitionDate: mockTreeData.acquisitionDate,
     currentGirth: mockTreeData.currentGirth.toString(),
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
+  const [editSpeciesMode, setEditSpeciesMode] = useState(
+    speciesList.length > 0 ? "existing" : "new"
+  );
+  const [editSelectedSpeciesId, setEditSelectedSpeciesId] = useState(
+    speciesList.length > 0 ? String(speciesList[0].id) : ""
+  );
+  const [editNewSpecies, setEditNewSpecies] = useState(initialSpeciesFormState);
+  const [editModalError, setEditModalError] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [, setReminders] = useState(() => loadStoredReminders());
   const fileInputRef = useRef(null);
   const accoladeFileInputRef = useRef(null);
@@ -156,6 +173,10 @@ const TreeDetail = () => {
   const [photoEditData, setPhotoEditData] = useState({ takenAt: "", description: "" });
   const [photoEditError, setPhotoEditError] = useState("");
   const [isSavingPhotoEdit, setIsSavingPhotoEdit] = useState(false);
+  const [photoActionError, setPhotoActionError] = useState("");
+  const [isSettingPrimary, setIsSettingPrimary] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState(tree?.notes ?? "");
 
   const hasAttemptedRefreshRef = useRef(false);
 
@@ -216,6 +237,15 @@ const TreeDetail = () => {
     return `${year}-${month}-${day}`;
   };
 
+  const formatSpeciesLabel = useCallback((species) => {
+    if (!species) {
+      return "";
+    }
+    return species.scientificName
+      ? `${species.commonName} (${species.scientificName})`
+      : species.commonName;
+  }, []);
+
   const stageMeta = useMemo(
     () => getStageMeta(tree.developmentStage),
     [tree.developmentStage]
@@ -263,6 +293,12 @@ const TreeDetail = () => {
       },
     ];
   }, [tree.photos, tree.photoUrl, tree.fullPhotoUrl, tree.acquisitionDate]);
+
+  const speciesSelectValue =
+    editSpeciesMode === "existing" ? editSelectedSpeciesId : "__new__";
+  const selectedSpecies = speciesList.find(
+    (item) => String(item.id) === String(editSelectedSpeciesId)
+  );
 
   useEffect(() => {
     setCurrentPhotoIndex((prev) => {
@@ -429,6 +465,12 @@ const TreeDetail = () => {
     };
   }, [fullscreenPhoto]);
 
+  useEffect(() => {
+    if (!isEditingNotes) {
+      setNotesDraft(tree?.notes ?? "");
+    }
+  }, [tree?.notes, isEditingNotes]);
+
   const openMoveToGraveyardModal = () => {
     setGraveyardForm({ category: "dead", note: "" });
     setShowGraveyardModal(true);
@@ -464,39 +506,243 @@ const TreeDetail = () => {
   const openEditModal = () => {
     setEditData({
       name: tree.name,
-      species: tree.species,
       acquisitionDate: tree.acquisitionDate,
       currentGirth: tree.currentGirth?.toString() ?? "",
       developmentStage: tree.developmentStage ?? DEFAULT_STAGE_VALUE,
       notes: tree.notes ?? "",
     });
+
+    const matchedSpecies = speciesList.find(
+      (item) => Number(item.id) === Number(tree.speciesId)
+    );
+
+    if (matchedSpecies) {
+      setEditSpeciesMode("existing");
+      setEditSelectedSpeciesId(String(matchedSpecies.id));
+    } else if (speciesList.length > 0) {
+      setEditSpeciesMode("existing");
+      setEditSelectedSpeciesId(String(speciesList[0].id));
+    } else {
+      setEditSpeciesMode("new");
+      setEditSelectedSpeciesId("");
+    }
+
+    if (!matchedSpecies && speciesList.length === 0) {
+      const fallbackName =
+        typeof tree.species === "string"
+          ? tree.species.replace(/\s*\([^)]*\)\s*$/, "").trim()
+          : "";
+      setEditNewSpecies({
+        ...initialSpeciesFormState,
+        commonName: fallbackName,
+      });
+    } else {
+      setEditNewSpecies(initialSpeciesFormState);
+    }
+
+    setEditModalError("");
+    setIsSavingEdit(false);
     setShowEditModal(true);
   };
 
-  const handleEditSave = () => {
-    setTree((prev) => ({
-      ...prev,
-      name: editData.name.trim() || prev.name,
-      species: editData.species.trim() || prev.species,
-      acquisitionDate: editData.acquisitionDate || prev.acquisitionDate,
-      currentGirth:
-        editData.currentGirth.trim() !== "" && !Number.isNaN(Number(editData.currentGirth))
-          ? Number(editData.currentGirth)
-          : prev.currentGirth,
-      developmentStage: editData.developmentStage || prev.developmentStage,
-      notes: editData.notes,
-    }));
+  const closeEditModal = () => {
     setShowEditModal(false);
+    setEditModalError("");
+    setIsSavingEdit(false);
+    setEditNewSpecies(initialSpeciesFormState);
   };
 
-  const nextPhoto = () =>
+  const handleEditSave = async () => {
+    if (isSavingEdit) {
+      return;
+    }
+
+    let speciesName = tree?.species ?? "";
+    let speciesId = tree?.speciesId ?? null;
+    let selectedSpecies = null;
+
+    if (editSpeciesMode === "existing") {
+      if (!editSelectedSpeciesId) {
+        setEditModalError("Please choose a species from your library.");
+        return;
+      }
+
+      selectedSpecies = speciesList.find(
+        (item) => String(item.id) === String(editSelectedSpeciesId)
+      );
+
+      if (!selectedSpecies) {
+        setEditModalError("Please choose a species from your library.");
+        return;
+      }
+
+      speciesId = selectedSpecies.id;
+      speciesName = formatSpeciesLabel(selectedSpecies);
+    } else {
+      const trimmedCommonName = editNewSpecies.commonName.trim();
+      if (!trimmedCommonName) {
+        setEditModalError("Please provide a common name for the new species.");
+        return;
+      }
+    }
+
+    setIsSavingEdit(true);
+    setEditModalError("");
+
+    try {
+      if (editSpeciesMode === "new") {
+        const created = await addSpecies({
+          commonName: editNewSpecies.commonName.trim(),
+          scientificName: editNewSpecies.scientificName.trim(),
+          notes: editNewSpecies.notes,
+        });
+        speciesId = created.id;
+        speciesName = formatSpeciesLabel(created);
+        await refreshSpecies();
+      }
+
+      const trimmedName = editData.name.trim();
+      const trimmedGirth = editData.currentGirth.trim();
+      const normalizedGirth =
+        trimmedGirth !== "" && !Number.isNaN(Number(trimmedGirth))
+          ? Number(trimmedGirth)
+          : tree.currentGirth;
+      const normalizedStage = editData.developmentStage || tree.developmentStage;
+      const normalizedAcquisition =
+        editData.acquisitionDate || tree.acquisitionDate;
+
+      setTree((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          name: trimmedName || prev.name,
+          species: speciesName,
+          speciesId,
+          acquisitionDate: normalizedAcquisition,
+          currentGirth: normalizedGirth,
+          developmentStage: normalizedStage,
+          notes: editData.notes,
+        };
+      });
+
+      closeEditModal();
+    } catch (error) {
+      setEditModalError(error.message || "Unable to save changes.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleSetPhotoAsPrimary = async () => {
+    const currentPhoto = photoEntries[currentPhotoIndex];
+    if (
+      !tree?.id ||
+      !currentPhoto?.id ||
+      currentPhoto.id === "placeholder" ||
+      currentPhoto.isPrimary ||
+      isSettingPrimary
+    ) {
+      return;
+    }
+
+    setIsSettingPrimary(true);
+    setPhotoActionError("");
+
+    try {
+      const updatedPhoto = await updateTreePhoto(tree.id, currentPhoto.id, {
+        is_primary: true,
+      });
+
+      setTree((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        const existingPhotos = Array.isArray(prev.photos) ? prev.photos : [];
+        let didReplace = false;
+        let updatedPhotos = existingPhotos.map((photo) => {
+          if (Number(photo.id) === Number(updatedPhoto.id)) {
+            didReplace = true;
+            return updatedPhoto;
+          }
+          if (updatedPhoto.isPrimary) {
+            return { ...photo, isPrimary: false };
+          }
+          return photo;
+        });
+
+        if (!didReplace) {
+          updatedPhotos = [updatedPhoto, ...existingPhotos];
+        }
+
+        const primaryPhoto =
+          updatedPhoto.isPrimary
+            ? updatedPhoto
+            : updatedPhotos.find((photo) => photo.isPrimary) ?? updatedPhotos[0];
+
+        return {
+          ...prev,
+          photos: updatedPhotos,
+          photoUrl: primaryPhoto
+            ? primaryPhoto.thumbnailUrl || primaryPhoto.url || primaryPhoto.fullUrl || prev.photoUrl
+            : prev.photoUrl,
+          fullPhotoUrl: primaryPhoto
+            ? primaryPhoto.fullUrl || primaryPhoto.url || prev.fullPhotoUrl
+            : prev.fullPhotoUrl,
+        };
+      });
+    } catch (error) {
+      setPhotoActionError(
+        error.message || "Failed to set this photo as the main image."
+      );
+    } finally {
+      setIsSettingPrimary(false);
+    }
+  };
+
+  const startNotesEdit = () => {
+    setNotesDraft(tree?.notes ?? "");
+    setIsEditingNotes(true);
+  };
+
+  const cancelNotesEdit = () => {
+    setNotesDraft(tree?.notes ?? "");
+    setIsEditingNotes(false);
+  };
+
+  const handleSaveNotes = () => {
+    const updatedNotes = notesDraft;
+    setTree((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        notes: updatedNotes,
+      };
+    });
+    setEditData((prev) => ({
+      ...prev,
+      notes: updatedNotes,
+    }));
+    setNotesDraft(updatedNotes);
+    setIsEditingNotes(false);
+  };
+
+  const nextPhoto = () => {
+    setPhotoActionError("");
     setCurrentPhotoIndex((prev) =>
       prev === photoEntries.length - 1 ? 0 : prev + 1
     );
-  const prevPhoto = () =>
+  };
+  const prevPhoto = () => {
+    setPhotoActionError("");
     setCurrentPhotoIndex((prev) =>
       prev === 0 ? photoEntries.length - 1 : prev - 1
     );
+  };
 
   const handleExportTree = () => {
     const data = JSON.stringify(tree, null, 2);
@@ -562,6 +808,7 @@ const TreeDetail = () => {
       takenAt: formatInputDate(photo.takenAt ?? photo.date ?? ""),
       description: photo.description ?? "",
     });
+    setPhotoActionError("");
     setShowEditPhotoModal(true);
   };
 
@@ -1086,20 +1333,75 @@ const TreeDetail = () => {
   };
 
   // ─── Tabs ────────────────────────────────────────────────
-  const OverviewTab = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="font-semibold text-gray-800 mb-3">Notes</h3>
-        <p className="text-gray-700 whitespace-pre-wrap">{tree.notes}</p>
+  const OverviewTab = () => {
+    const hasNotes = Boolean(tree?.notes && tree.notes.trim());
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <h3 className="font-semibold text-gray-800">Notes</h3>
+            {isEditingNotes ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={cancelNotesEdit}
+                  className="rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveNotes}
+                  className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white hover:bg-green-700 transition"
+                >
+                  Save Notes
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={startNotesEdit}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+              >
+                <Edit className="w-4 h-4" />
+                Edit
+              </button>
+            )}
+          </div>
+
+          {isEditingNotes ? (
+            <div className="space-y-3">
+              <textarea
+                value={notesDraft}
+                onChange={(event) => setNotesDraft(event.target.value)}
+                rows={8}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                placeholder="Add notes about this tree's care, styling, or history using Markdown formatting."
+              />
+            </div>
+          ) : hasNotes ? (
+            <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
+              <ReactMarkdown>{tree.notes}</ReactMarkdown>
+            </div>
+          ) : (
+            <p className="text-gray-500 italic">
+              No notes yet. Click edit to add some.
+            </p>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const PhotosTab = () => {
     const currentPhoto = photoEntries[currentPhotoIndex];
     const canEditCurrentPhoto = Boolean(
       currentPhoto?.id && currentPhoto.id !== "placeholder" && tree?.id
     );
+    const isPrimaryPhoto = Boolean(currentPhoto?.isPrimary);
+
+    const canSetAsPrimary = canEditCurrentPhoto;
 
     return (
       <div className="space-y-6">
@@ -1128,6 +1430,32 @@ const TreeDetail = () => {
             </div>
           )}
 
+          {canEditCurrentPhoto && (
+            <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-10">
+              <button
+                type="button"
+                onClick={handleSetPhotoAsPrimary}
+                disabled={!canSetAsPrimary || isPrimaryPhoto || isSettingPrimary}
+                className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-gray-800 shadow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPrimaryPhoto
+                  ? "Main photo"
+                  : isSettingPrimary
+                  ? "Setting..."
+                  : "Set as main"}
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditPhotoModal(currentPhoto)}
+                disabled={!canEditCurrentPhoto}
+                className="rounded-full bg-white/90 p-2 text-gray-700 shadow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Edit photo details"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={prevPhoto}
             className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
@@ -1141,7 +1469,7 @@ const TreeDetail = () => {
             <ChevronRight className="w-6 h-6" />
           </button>
 
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3 pointer-events-none z-0">
             <div className="text-white text-sm">
               {currentPhoto?.date ? (
                 <p className="opacity-80">{formatDate(currentPhoto.date)}</p>
@@ -1153,23 +1481,20 @@ const TreeDetail = () => {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => openEditPhotoModal(currentPhoto)}
-            disabled={!canEditCurrentPhoto}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Edit className="w-4 h-4" />
-            Edit photo info
-          </button>
-        </div>
+        {photoActionError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {photoActionError}
+          </p>
+        )}
 
         <div className="relative overflow-visible flex gap-3 pb-3 pt-3 z-0">
           {photoEntries.map((photo, index) => (
             <button
               key={photo.id}
-              onClick={() => setCurrentPhotoIndex(index)}
+              onClick={() => {
+                setPhotoActionError("");
+                setCurrentPhotoIndex(index);
+              }}
               className={`relative flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 ${
                 index === currentPhotoIndex
                   ? "border-green-600 scale-110 -translate-y-1 shadow-lg z-20"
@@ -2295,12 +2620,18 @@ const TreeDetail = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-xl shadow-lg max-w-xl w-full p-6 relative space-y-4">
             <button
-              onClick={() => setShowEditModal(false)}
+              onClick={closeEditModal}
               className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
             >
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-lg font-semibold text-gray-800">Edit Tree Details</h3>
+
+            {editModalError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {editModalError}
+              </p>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
@@ -2313,15 +2644,108 @@ const TreeDetail = () => {
                 />
               </label>
 
-              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
-                Species
-                <input
-                  type="text"
-                  value={editData.species}
-                  onChange={(e) => setEditData((prev) => ({ ...prev, species: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-                />
-              </label>
+              <div className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
+                <span>Species</span>
+                <div className="space-y-2">
+                  <select
+                    value={speciesSelectValue}
+                    onChange={(event) => {
+                      const { value } = event.target;
+                      if (value === "__new__") {
+                        setEditSpeciesMode("new");
+                        setEditSelectedSpeciesId("");
+                      } else {
+                        setEditSpeciesMode("existing");
+                        setEditSelectedSpeciesId(value);
+                      }
+                    }}
+                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  >
+                    {speciesList.length === 0 && (
+                      <option value="" disabled>
+                        No species yet - add one below
+                      </option>
+                    )}
+                    {speciesList.map((species) => (
+                      <option key={species.id} value={String(species.id)}>
+                        {formatSpeciesLabel(species)}
+                      </option>
+                    ))}
+                    <option value="__new__">➕ Add a new species</option>
+                  </select>
+
+                  {editSpeciesMode === "existing" && selectedSpecies && (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
+                      <p className="font-medium text-gray-700">
+                        {formatSpeciesLabel(selectedSpecies)}
+                      </p>
+                      <p>
+                        {selectedSpecies.scientificName
+                          ? `Scientific name: ${selectedSpecies.scientificName}`
+                          : "Scientific name not recorded yet."}
+                      </p>
+                      {selectedSpecies.notes && (
+                        <p className="text-gray-500">
+                          {selectedSpecies.notes}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {editSpeciesMode === "new" && (
+                    <div className="space-y-3 rounded-lg border border-dashed border-green-200 bg-green-50/60 p-3 text-xs text-gray-600">
+                      <p>
+                        Adding a new species will also save it to your library.
+                      </p>
+                      <div className="space-y-1">
+                        <label className="font-medium text-gray-700">Common Name *</label>
+                        <input
+                          type="text"
+                          value={editNewSpecies.commonName}
+                          onChange={(event) =>
+                            setEditNewSpecies((prev) => ({
+                              ...prev,
+                              commonName: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Chinese Elm"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-medium text-gray-700">Scientific Name</label>
+                        <input
+                          type="text"
+                          value={editNewSpecies.scientificName}
+                          onChange={(event) =>
+                            setEditNewSpecies((prev) => ({
+                              ...prev,
+                              scientificName: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Ulmus parvifolia"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-medium text-gray-700">Notes</label>
+                        <textarea
+                          rows={3}
+                          value={editNewSpecies.notes}
+                          onChange={(event) =>
+                            setEditNewSpecies((prev) => ({
+                              ...prev,
+                              notes: event.target.value,
+                            }))
+                          }
+                          placeholder="Optional care notes for this species"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
                 Date Acquired
@@ -2373,16 +2797,17 @@ const TreeDetail = () => {
 
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setShowEditModal(false)}
+                onClick={closeEditModal}
                 className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleEditSave}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+                disabled={isSavingEdit}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition disabled:cursor-not-allowed disabled:bg-green-300"
               >
-                Save Changes
+                {isSavingEdit ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>

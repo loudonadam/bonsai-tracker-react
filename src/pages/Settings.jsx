@@ -4,7 +4,12 @@ import { ArrowLeft, Upload, Download, Save } from "lucide-react";
 
 const Settings = () => {
   const navigate = useNavigate();
-  const [collectionName, setCollectionName] = useState("My Bonsai Collection");
+  const [collectionName, setCollectionName] = useState(() => {
+    if (typeof window === "undefined") {
+      return "My Bonsai Collection";
+    }
+    return localStorage.getItem("collectionName") || "My Bonsai Collection";
+  });
   const fileInputRef = useRef(null);
 
   const handleNameSave = () => {
