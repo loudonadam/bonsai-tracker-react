@@ -61,6 +61,55 @@ def _load_csv_file(path: Path) -> list[dict[str, str]]:
         return [row for row in reader]
 
 
+def _normalize_photo_subpath(value: str | None, prefix: str) -> Path | None:
+    if not value:
+        return None
+
+    path = Path(value)
+    parts = list(path.parts)
+
+    if path.is_absolute() and parts:
+        parts = parts[1:]
+
+    if ".." in parts:
+        return None
+
+    if prefix in parts:
+        prefix_index = parts.index(prefix)
+        parts = parts[prefix_index + 1 :]
+    elif parts and parts[0] == prefix:
+        parts = parts[1:]
+
+    if not parts:
+        return None
+
+    return Path(*parts)
+
+
+def _is_version_at_least(version: str, major: int, minor: int = 0) -> bool:
+    parts = version.split(".")
+
+    def _parse(index: int) -> int:
+        if index >= len(parts):
+            return 0
+        part = parts[index]
+        digits = []
+        for char in part:
+            if char.isdigit():
+                digits.append(char)
+            else:
+                break
+        return int("".join(digits)) if digits else 0
+
+    version_major = _parse(0)
+    version_minor = _parse(1)
+
+    if version_major != major:
+        return version_major > major
+
+    return version_minor >= minor
+
+
 def _collect_rows_v1(data_dir: Path) -> tuple[
     list[dict[str, str]],
     list[dict[str, str]],
@@ -219,6 +268,20 @@ def _collect_rows_v2(data_dir: Path) -> tuple[
     )
 
 
+def _copy_tree_photos(source_dir: Path, target_media_root: Path) -> None:
+    if not source_dir.exists():
+        return
+
+    for file_path in source_dir.rglob("*"):
+        if not file_path.is_file():
+            continue
+
+        relative = file_path.relative_to(source_dir)
+        destination = target_media_root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(file_path, destination)
+
+
 def _import_rows(
     db: Session,
     species_rows: list[dict[str, str]],
@@ -369,7 +432,7 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        metadata = {"exported_at": datetime.utcnow().isoformat() + "Z", "version": "2.0"}
+        metadata = {"exported_at": datetime.utcnow().isoformat() + "Z", "version": "2.1"}
         archive.writestr("metadata.json", json.dumps(metadata, indent=2))
 
         species = db.query(models.Species).order_by(models.Species.id).all()
@@ -416,6 +479,7 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
         )
 
         tree_index_rows: list[dict[str, str]] = []
+        media_root = settings.media_root
         for tree in bonsai:
             species = tree.species
             folder = f"{tree.id:04d}_{_slugify(tree.name)}"
@@ -575,6 +639,30 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
                 ),
             )
 
+            tree_media_dir = Path(tree_dir) / "photos"
+            for photo in photos:
+                for path_value, prefix in (
+                    (photo.full_path, "full"),
+                    (photo.thumbnail_path, "thumbs"),
+                ):
+                    subpath = _normalize_photo_subpath(path_value, prefix)
+                    if subpath is None:
+                        continue
+
+                    path_obj = Path(path_value)
+                    if path_obj.is_absolute():
+                        source_path = path_obj
+                    else:
+                        if not media_root.exists():
+                            continue
+                        source_path = media_root / path_obj
+
+                    if not source_path.exists() or not source_path.is_file():
+                        continue
+
+                    destination = tree_media_dir / prefix / subpath
+                    archive.write(source_path, destination.as_posix())
+
             notifications = sorted(
                 tree.notifications,
                 key=lambda notification: notification.due_at
@@ -676,13 +764,6 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
             ),
         )
 
-        media_root = settings.media_root
-        if media_root.exists():
-            for file_path in media_root.rglob("*"):
-                if file_path.is_file():
-                    relative = file_path.relative_to(media_root)
-                    archive.write(file_path, Path("media") / relative)
-
     buffer.seek(0)
     filename = f"bonsai_backup_{timestamp}.zip"
     headers = {"Content-Disposition": f"attachment; filename=\"{filename}\""}
@@ -698,6 +779,34 @@ def _safe_extract(zip_file: zipfile.ZipFile, destination: Path) -> None:
                 detail="Archive contains unsafe paths",
             )
     zip_file.extractall(destination)
+
+
+def _restore_media(tmp_dir: Path, metadata_version: str) -> None:
+    target_media_root = settings.media_root
+    if target_media_root.exists():
+        shutil.rmtree(target_media_root)
+
+    if _is_version_at_least(metadata_version, 2, 1):
+        target_media_root.mkdir(parents=True, exist_ok=True)
+
+        trees_root = tmp_dir / "data" / "trees"
+        if trees_root.exists():
+            for tree_dir in trees_root.iterdir():
+                if not tree_dir.is_dir():
+                    continue
+                photos_dir = tree_dir / "photos"
+                _copy_tree_photos(photos_dir, target_media_root)
+
+        (target_media_root / "full").mkdir(parents=True, exist_ok=True)
+        (target_media_root / "thumbs").mkdir(parents=True, exist_ok=True)
+    else:
+        media_dir = tmp_dir / "media"
+        if media_dir.exists():
+            shutil.copytree(media_dir, target_media_root)
+        else:
+            target_media_root.mkdir(parents=True, exist_ok=True)
+            (target_media_root / "full").mkdir(parents=True, exist_ok=True)
+            (target_media_root / "thumbs").mkdir(parents=True, exist_ok=True)
 
 
 def _parse_int(value: str | None) -> int | None:
@@ -823,17 +932,7 @@ async def import_backup(
                     graveyard_rows,
                 )
 
-                media_dir = tmp_dir / "media"
-
-                target_media_root = settings.media_root
-                if target_media_root.exists():
-                    shutil.rmtree(target_media_root)
-                if media_dir.exists():
-                    shutil.copytree(media_dir, target_media_root)
-                else:
-                    target_media_root.mkdir(parents=True, exist_ok=True)
-                    (target_media_root / "full").mkdir(parents=True, exist_ok=True)
-                    (target_media_root / "thumbs").mkdir(parents=True, exist_ok=True)
+                _restore_media(tmp_dir, metadata_version)
     except zipfile.BadZipFile as exc:  # pragma: no cover - defensive programming
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ZIP archive") from exc
 
