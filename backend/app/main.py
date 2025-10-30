@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import Base, engine
-from .routers import bonsai, measurements, notifications, photos, species, updates
+from .routers import backup, bonsai, measurements, notifications, photos, species, updates
 
 Base.metadata.create_all(bind=engine)
 
@@ -26,6 +26,7 @@ app.include_router(measurements.router)
 app.include_router(updates.router)
 app.include_router(photos.router)
 app.include_router(notifications.router)
+app.include_router(backup.router)
 
 app.mount(settings.media_url, StaticFiles(directory=settings.media_root), name="media")
 

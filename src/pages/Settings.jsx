@@ -2,6 +2,8 @@ import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Upload, Download, Save } from "lucide-react";
 
+import { getApiBaseUrl } from "../services/apiClient";
+
 const Settings = () => {
   const navigate = useNavigate();
   const [collectionName, setCollectionName] = useState(() => {
@@ -11,6 +13,7 @@ const Settings = () => {
     return localStorage.getItem("collectionName") || "My Bonsai Collection";
   });
   const fileInputRef = useRef(null);
+  const apiBaseUrl = getApiBaseUrl();
 
   const handleNameSave = () => {
     alert(`Collection name saved as: ${collectionName}`);
@@ -18,39 +21,93 @@ const Settings = () => {
     localStorage.setItem("collectionName", collectionName);
   };
 
-  const handleExport = () => {
-    // Replace this mock data with real data source later
-    const bonsaiData = JSON.parse(localStorage.getItem("bonsaiData")) || {
-      trees: [],
-      reminders: [],
-    };
+  const handleExport = async () => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/backup/export`, {
+        method: "GET",
+      });
+      const blob = await response.blob();
 
-    const blob = new Blob([JSON.stringify(bonsaiData, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "bonsai_export.json";
-    link.click();
-    URL.revokeObjectURL(url);
+      if (!response.ok) {
+        let message = `Export failed with status ${response.status}`;
+        try {
+          const errorText = await blob.text();
+          const data = JSON.parse(errorText);
+          if (data?.detail) {
+            message = data.detail;
+          }
+        } catch {
+          /* ignore parsing errors */
+        }
+        throw new Error(message);
+      }
+
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.download = `bonsai_backup_${timestamp}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error("Failed to export bonsai data", error);
+      alert(error.message || "Unable to export bonsai data.");
+    }
   };
 
-  const handleImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const handleImport = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const importedData = JSON.parse(event.target.result);
-        localStorage.setItem("bonsaiData", JSON.stringify(importedData));
-        alert("Bonsai data imported successfully!");
-      } catch {
-        alert("Invalid file format. Please upload a valid JSON export.");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${apiBaseUrl}/backup/import`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        let message = `Import failed with status ${response.status}`;
+        try {
+          const data = JSON.parse(responseText);
+          if (data?.detail) {
+            message = data.detail;
+          }
+        } catch {
+          /* ignore parsing errors */
+        }
+        throw new Error(message);
       }
-    };
-    reader.readAsText(file);
+
+      let successMessage = "Bonsai data imported successfully!";
+      if (responseText) {
+        try {
+          const data = JSON.parse(responseText);
+          if (data?.detail) {
+            successMessage = data.detail;
+          }
+        } catch {
+          /* ignore parsing errors */
+        }
+      }
+
+      alert(successMessage);
+    } catch (error) {
+      console.error("Failed to import bonsai data", error);
+      alert(error.message || "Unable to import bonsai data.");
+    } finally {
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
   };
 
   return (
@@ -100,7 +157,8 @@ const Settings = () => {
             Export Data
           </h2>
           <p className="text-gray-600 text-sm mb-4">
-            Download a backup of all your bonsai data as a JSON file.
+            Download a full backup of your bonsai collection, including
+            species, measurements, updates, and photos, as a ZIP archive.
           </p>
           <button
             onClick={handleExport}
@@ -117,12 +175,12 @@ const Settings = () => {
             Import Data
           </h2>
           <p className="text-gray-600 text-sm mb-4">
-            Restore from a previously exported JSON file. This will overwrite
+            Restore from a previously exported backup ZIP. This will overwrite
             your current data.
           </p>
           <input
             type="file"
-            accept=".json"
+            accept=".zip"
             ref={fileInputRef}
             onChange={handleImport}
             className="hidden"
