@@ -162,7 +162,6 @@ const TreeDetail = () => {
   const accoladeFileInputRef = useRef(null);
   const photoUploadInputRef = useRef(null);
   const stageMenuRef = useRef(null);
-  const notesTextareaRef = useRef(null);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
   const [showAddPhotoModal, setShowAddPhotoModal] = useState(false);
   const [newPhoto, setNewPhoto] = useState(initialPhotoUploadState);
@@ -296,10 +295,6 @@ const TreeDetail = () => {
 
   const speciesSelectValue =
     editSpeciesMode === "existing" ? editSelectedSpeciesId : "__new__";
-  const selectedSpecies = speciesList.find(
-    (item) => String(item.id) === String(editSelectedSpeciesId)
-  );
-
   useEffect(() => {
     setCurrentPhotoIndex((prev) => {
       if (prev >= photoEntries.length) {
@@ -470,38 +465,6 @@ const TreeDetail = () => {
       setNotesDraft(tree?.notes ?? "");
     }
   }, [tree?.notes, isEditingNotes]);
-
-  useEffect(() => {
-    if (
-      typeof document === "undefined" ||
-      !isEditingNotes ||
-      !notesTextareaRef.current
-    ) {
-      return;
-    }
-
-    const textarea = notesTextareaRef.current;
-    if (document.activeElement === textarea) {
-      return;
-    }
-
-    const start =
-      typeof textarea.selectionStart === "number"
-        ? textarea.selectionStart
-        : textarea.value.length;
-    const end =
-      typeof textarea.selectionEnd === "number"
-        ? textarea.selectionEnd
-        : textarea.value.length;
-
-    textarea.focus({ preventScroll: true });
-    try {
-      textarea.setSelectionRange(start, end);
-    } catch {
-      const length = textarea.value.length;
-      textarea.setSelectionRange(length, length);
-    }
-  }, [isEditingNotes, notesDraft]);
 
   const openMoveToGraveyardModal = () => {
     setGraveyardForm({ category: "dead", note: "" });
@@ -1398,7 +1361,6 @@ const TreeDetail = () => {
           {isEditingNotes ? (
             <div className="space-y-3">
               <textarea
-                ref={notesTextareaRef}
                 value={notesDraft}
                 onChange={(event) => setNotesDraft(event.target.value)}
                 rows={8}
@@ -2659,18 +2621,18 @@ const TreeDetail = () => {
               </p>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-4">
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
                 Tree Name
                 <input
                   type="text"
                   value={editData.name}
                   onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
                 />
               </label>
 
-              <div className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
+              <div className="flex flex-col text-sm font-medium text-gray-700 gap-1">
                 <span>Species</span>
                 <div className="space-y-2">
                   <select
@@ -2685,7 +2647,7 @@ const TreeDetail = () => {
                         setEditSelectedSpeciesId(value);
                       }
                     }}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
                   >
                     {speciesList.length === 0 && (
                       <option value="" disabled>
@@ -2699,24 +2661,6 @@ const TreeDetail = () => {
                     ))}
                     <option value="__new__">➕ Add a new species</option>
                   </select>
-
-                  {editSpeciesMode === "existing" && selectedSpecies && (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
-                      <p className="font-medium text-gray-700">
-                        {formatSpeciesLabel(selectedSpecies)}
-                      </p>
-                      <p>
-                        {selectedSpecies.scientificName
-                          ? `Scientific name: ${selectedSpecies.scientificName}`
-                          : "Scientific name not recorded yet."}
-                      </p>
-                      {selectedSpecies.notes && (
-                        <p className="text-gray-500">
-                          {selectedSpecies.notes}
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   {editSpeciesMode === "new" && (
                     <div className="space-y-3 rounded-lg border border-dashed border-green-200 bg-green-50/60 p-3 text-xs text-gray-600">
@@ -2779,16 +2723,16 @@ const TreeDetail = () => {
                   type="date"
                   value={editData.acquisitionDate}
                   onChange={(e) => setEditData((prev) => ({ ...prev, acquisitionDate: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
                 />
               </label>
 
-              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
                 Development Stage
                 <select
                   value={editData.developmentStage}
                   onChange={(e) => setEditData((prev) => ({ ...prev, developmentStage: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent bg-white text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent bg-white text-gray-700"
                 >
                   {DEVELOPMENT_STAGE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -2798,13 +2742,13 @@ const TreeDetail = () => {
                 </select>
               </label>
 
-              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1 sm:col-span-2">
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
                 Notes
                 <textarea
                   rows={4}
                   value={editData.notes}
                   onChange={(e) => setEditData((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent resize-none"
                 />
               </label>
             </div>
