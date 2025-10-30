@@ -145,7 +145,6 @@ const TreeDetail = () => {
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     acquisitionDate: mockTreeData.acquisitionDate,
-    currentGirth: mockTreeData.currentGirth.toString(),
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
@@ -163,6 +162,7 @@ const TreeDetail = () => {
   const accoladeFileInputRef = useRef(null);
   const photoUploadInputRef = useRef(null);
   const stageMenuRef = useRef(null);
+  const notesTextareaRef = useRef(null);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
   const [showAddPhotoModal, setShowAddPhotoModal] = useState(false);
   const [newPhoto, setNewPhoto] = useState(initialPhotoUploadState);
@@ -471,6 +471,38 @@ const TreeDetail = () => {
     }
   }, [tree?.notes, isEditingNotes]);
 
+  useEffect(() => {
+    if (
+      typeof document === "undefined" ||
+      !isEditingNotes ||
+      !notesTextareaRef.current
+    ) {
+      return;
+    }
+
+    const textarea = notesTextareaRef.current;
+    if (document.activeElement === textarea) {
+      return;
+    }
+
+    const start =
+      typeof textarea.selectionStart === "number"
+        ? textarea.selectionStart
+        : textarea.value.length;
+    const end =
+      typeof textarea.selectionEnd === "number"
+        ? textarea.selectionEnd
+        : textarea.value.length;
+
+    textarea.focus({ preventScroll: true });
+    try {
+      textarea.setSelectionRange(start, end);
+    } catch {
+      const length = textarea.value.length;
+      textarea.setSelectionRange(length, length);
+    }
+  }, [isEditingNotes, notesDraft]);
+
   const openMoveToGraveyardModal = () => {
     setGraveyardForm({ category: "dead", note: "" });
     setShowGraveyardModal(true);
@@ -507,7 +539,6 @@ const TreeDetail = () => {
     setEditData({
       name: tree.name,
       acquisitionDate: tree.acquisitionDate,
-      currentGirth: tree.currentGirth?.toString() ?? "",
       developmentStage: tree.developmentStage ?? DEFAULT_STAGE_VALUE,
       notes: tree.notes ?? "",
     });
@@ -602,11 +633,6 @@ const TreeDetail = () => {
       }
 
       const trimmedName = editData.name.trim();
-      const trimmedGirth = editData.currentGirth.trim();
-      const normalizedGirth =
-        trimmedGirth !== "" && !Number.isNaN(Number(trimmedGirth))
-          ? Number(trimmedGirth)
-          : tree.currentGirth;
       const normalizedStage = editData.developmentStage || tree.developmentStage;
       const normalizedAcquisition =
         editData.acquisitionDate || tree.acquisitionDate;
@@ -621,7 +647,6 @@ const TreeDetail = () => {
           species: speciesName,
           speciesId,
           acquisitionDate: normalizedAcquisition,
-          currentGirth: normalizedGirth,
           developmentStage: normalizedStage,
           notes: editData.notes,
         };
@@ -1373,6 +1398,7 @@ const TreeDetail = () => {
           {isEditingNotes ? (
             <div className="space-y-3">
               <textarea
+                ref={notesTextareaRef}
                 value={notesDraft}
                 onChange={(event) => setNotesDraft(event.target.value)}
                 rows={8}
@@ -1716,10 +1742,10 @@ const TreeDetail = () => {
 
   // ─── Render ───────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 pl-2 pr-0 sm:pl-4">
+    <div className="min-h-screen bg-gray-50 px-2 sm:px-4 lg:px-6">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between px-6 py-3 sm:px-8 lg:px-10">
+        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/')}
@@ -1755,7 +1781,7 @@ const TreeDetail = () => {
         <div className="h-1 bg-green-600"></div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-[1500px] grid-cols-1 gap-8 px-6 py-8 sm:px-8 lg:grid-cols-[1fr_350px] lg:px-10">
+      <main className="mx-auto grid w-full max-w-[1800px] grid-cols-1 gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_350px] lg:px-8">
         <div>
           <div className="relative bg-green-50 rounded-lg shadow-sm p-6 mb-6 border border-green-100">
             {/* Development Stage Badge */}
@@ -2753,18 +2779,6 @@ const TreeDetail = () => {
                   type="date"
                   value={editData.acquisitionDate}
                   onChange={(e) => setEditData((prev) => ({ ...prev, acquisitionDate: e.target.value }))}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-                />
-              </label>
-
-              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
-                Current Trunk Width (cm)
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={editData.currentGirth}
-                  onChange={(e) => setEditData((prev) => ({ ...prev, currentGirth: e.target.value }))}
                   className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
                 />
               </label>

@@ -329,7 +329,7 @@ const Home = () => {
           <div className="hidden lg:flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 flex-1">
               <h1 className="text-2xl font-bold text-gray-900 whitespace-nowrap">
-                🌱 {collectionName}
+                {collectionName}
               </h1>
               <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -363,7 +363,7 @@ const Home = () => {
           {/* Mobile */}
           <div className="lg:hidden flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-gray-900">🌱 {collectionName}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{collectionName}</h1>
               <button
                 onClick={() => navigate("/graveyard")}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
