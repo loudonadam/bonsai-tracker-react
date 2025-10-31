@@ -1,6 +1,10 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Camera, Calendar, Ruler } from "lucide-react";
 import { getStageMeta } from "../utils/developmentStages";
+import {
+  calculateAgeInYears,
+  formatDisplayDate,
+} from "../utils/dateUtils";
 
 // TreeCard Component - displays a single bonsai tree
 const TreeCard = ({
@@ -16,25 +20,6 @@ const TreeCard = ({
     developmentStage: "pre-bonsai",
   },
 }) => {
-  // Calculate tree age in years
-  const calculateAge = (dateString) => {
-    const start = new Date(dateString);
-    const now = new Date();
-    const years = (now - start) / (1000 * 60 * 60 * 24 * 365.25);
-    return years.toFixed(1);
-  };
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return "No updates yet";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   const stageMeta = getStageMeta(tree.developmentStage);
 
   const fallbackPhoto = Array.isArray(tree.photos)
@@ -47,6 +32,18 @@ const TreeCard = ({
     fallbackPhoto?.thumbnailUrl ||
     fallbackPhoto?.url ||
     fallbackPhoto?.fullUrl;
+
+  const treeAgeLabel = useMemo(() => calculateAgeInYears(tree.acquisitionDate), [
+    tree.acquisitionDate,
+  ]);
+
+  const formattedLastUpdate = useMemo(
+    () =>
+      formatDisplayDate(tree.lastUpdate, {
+        fallback: "No updates yet",
+      }),
+    [tree.lastUpdate]
+  );
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
@@ -80,7 +77,9 @@ const TreeCard = ({
           {/* Age */}
           <div className="flex items-center">
             <Calendar className="mr-2 h-4 w-4 text-green-500" />
-            <span>{calculateAge(tree.acquisitionDate)} years old</span>
+            <span>
+              {treeAgeLabel !== null ? `${treeAgeLabel} years old` : "Age unknown"}
+            </span>
           </div>
 
           {/* Trunk Width */}
@@ -96,7 +95,7 @@ const TreeCard = ({
             <div className="mr-2 flex h-4 w-4 items-center justify-center">
               <div className="h-2 w-2 rounded-full bg-green-400"></div>
             </div>
-            <span>Updated {formatDate(tree.lastUpdate)}</span>
+            <span>Updated {formattedLastUpdate}</span>
           </div>
         </div>
 

@@ -27,17 +27,106 @@ import {
   getStageMeta,
 } from "../utils/developmentStages";
 import { useTrees } from "../context/TreesContext";
+import {
+  calculateAgeInYears,
+  differenceInDays,
+  formatDisplayDate,
+  getSafeTimestamp,
+  startOfDay,
+} from "../utils/dateUtils";
+
+const DEFAULT_COLLECTION_NAME = "Bonsai Tracker";
+
+const getStoredCollectionName = () => {
+  if (typeof window === "undefined") {
+    return DEFAULT_COLLECTION_NAME;
+  }
+  return localStorage.getItem("collectionName") || DEFAULT_COLLECTION_NAME;
+};
+
+const DEFAULT_REMINDERS = [
+  {
+    id: 1,
+    treeId: 1,
+    treeName: "Autumn Flame",
+    message: "Repot in early spring",
+    dueDate: "2025-03-15",
+  },
+];
+
+const formatReminderDueDate = (dateString, todayStart) => {
+  if (!dateString) {
+    return "No due date";
+  }
+
+  const diffDays = differenceInDays(dateString, todayStart);
+  if (diffDays === null) {
+    return "No due date";
+  }
+
+  if (diffDays < 0) {
+    const diffWeeks = Math.ceil(Math.abs(diffDays) / 7);
+    return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} overdue`;
+  }
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Tomorrow";
+  if (diffDays <= 7) return `In ${diffDays} days`;
+
+  return formatDisplayDate(dateString, {
+    options: { month: "short", day: "numeric" },
+    fallback: "No due date",
+  });
+};
+
+const ReminderCard = ({ reminder, onComplete, status, todayStart }) => {
+  const isOverdue = status === "overdue";
+  return (
+    <div
+      className={`rounded-xl border p-4 shadow-sm transition ${
+        isOverdue ? "border-red-200 bg-red-50/70" : "border-blue-200 bg-blue-50/70"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                isOverdue ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${isOverdue ? "bg-red-500" : "bg-blue-500"}`} />
+              {status === "overdue" ? "Overdue" : "Upcoming"}
+            </span>
+            <span className="text-gray-400">•</span>
+            <span className="text-gray-600">
+              {formatReminderDueDate(reminder.dueDate, todayStart)}
+            </span>
+          </div>
+          <p className="mt-2 truncate text-sm font-semibold text-gray-900">
+            {reminder.treeName}
+          </p>
+          <p className="mt-1 text-sm leading-snug text-gray-700">
+            {reminder.message}
+          </p>
+        </div>
+        <button
+          onClick={() => onComplete(reminder.id)}
+          className="shrink-0 rounded-full border border-green-200 px-3 py-1 text-xs font-medium text-green-700 transition hover:bg-green-50 hover:text-green-800"
+        >
+          <div className="flex items-center gap-1">
+            <CheckCircle className="h-4 w-4" />
+            <span>Done</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const Home = () => {
   const navigate = useNavigate();
   const { trees, addTree, loading: treesLoading, error: treesError } = useTrees();
-
-  const getStoredCollectionName = () => {
-    if (typeof window === "undefined") {
-      return "Bonsai Tracker";
-    }
-    return localStorage.getItem("collectionName") || "Bonsai Tracker";
-  };
 
   const [collectionName, setCollectionName] = useState(getStoredCollectionName);
 
@@ -52,23 +141,13 @@ const Home = () => {
   const [showAddTree, setShowAddTree] = useState(false);
   const [sortOption, setSortOption] = useState("recent");
 
-  const defaultReminders = [
-    {
-      id: 1,
-      treeId: 1,
-      treeName: "Autumn Flame",
-      message: "Repot in early spring",
-      dueDate: "2025-03-15",
-    },
-  ];
-
   const [reminders, setReminders] = useState(() => {
     const stored = loadStoredReminders();
     if (stored.length > 0) {
       return stored;
     }
-    saveStoredReminders(defaultReminders);
-    return defaultReminders;
+    saveStoredReminders(DEFAULT_REMINDERS);
+    return DEFAULT_REMINDERS;
   });
 
   // ─── Derived Stats ───────────────────────────────────────────
@@ -84,23 +163,45 @@ const Home = () => {
       };
     }
 
-    const ageSum = trees.reduce((sum, t) => {
-      const age =
-        (new Date() - new Date(t.acquisitionDate)) /
-        (1000 * 60 * 60 * 24 * 365.25);
-      return sum + age;
-    }, 0);
+    const speciesSet = new Set();
+    let newest = null;
+    let oldest = null;
+    let ageSum = 0;
+    let datedTreeCount = 0;
 
-    const newest = trees.reduce((a, b) =>
-      new Date(a.acquisitionDate) > new Date(b.acquisitionDate) ? a : b
-    );
-    const oldest = trees.reduce((a, b) =>
-      new Date(a.acquisitionDate) < new Date(b.acquisitionDate) ? a : b
-    );
+    trees.forEach((tree) => {
+      if (tree.species) {
+        speciesSet.add(tree.species);
+      }
+
+      const acquisitionTimestamp = getSafeTimestamp(tree.acquisitionDate);
+      if (acquisitionTimestamp !== null) {
+        const years = calculateAgeInYears(tree.acquisitionDate);
+        if (years !== null) {
+          ageSum += years;
+          datedTreeCount += 1;
+        }
+
+        if (!newest || acquisitionTimestamp > getSafeTimestamp(newest.acquisitionDate, -Infinity)) {
+          newest = tree;
+        }
+        if (!oldest || acquisitionTimestamp < getSafeTimestamp(oldest.acquisitionDate, Infinity)) {
+          oldest = tree;
+        }
+      }
+    });
+
+    if (!newest && trees.length > 0) {
+      newest = trees[0];
+    }
+    if (!oldest && trees.length > 0) {
+      oldest = trees[0];
+    }
 
     return {
-      avgAge: (ageSum / trees.length).toFixed(1),
-      uniqueSpecies: new Set(trees.map((t) => t.species)).size,
+      avgAge:
+        datedTreeCount > 0 ? (ageSum / datedTreeCount).toFixed(1) : "0.0",
+      uniqueSpecies: speciesSet.size,
       newestTree: newest,
       oldestTree: oldest,
     };
@@ -122,91 +223,34 @@ const Home = () => {
     setReminders(updated);
   };
 
-  const sortedReminders = useMemo(() => {
-    return [...reminders].sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
-  }, [reminders]);
+  const todayStart = useMemo(() => startOfDay(), []);
 
-  const startOfToday = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
-  }, []);
+  const todayTimestamp = todayStart ? todayStart.getTime() : 0;
 
-  const overdueReminders = sortedReminders.filter(
-    (r) => new Date(r.dueDate).getTime() < startOfToday.getTime()
-  );
-  const upcomingReminders = sortedReminders.filter(
-    (r) => new Date(r.dueDate).getTime() >= startOfToday.getTime()
-  );
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    date.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((date - today) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) {
-      const diffWeeks = Math.ceil(Math.abs(diffDays) / 7);
-      return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} overdue`;
+  const { overdueReminders, upcomingReminders } = useMemo(() => {
+    if (reminders.length === 0) {
+      return { overdueReminders: [], upcomingReminders: [] };
     }
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Tomorrow";
-    if (diffDays <= 7) return `In ${diffDays} days`;
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
 
-  const ReminderCard = ({ reminder, formatDate, onComplete, status }) => {
-    const isOverdue = status === "overdue";
-    return (
-      <div
-        className={`rounded-xl border p-4 shadow-sm transition ${
-          isOverdue
-            ? "border-red-200 bg-red-50/70"
-            : "border-blue-200 bg-blue-50/70"
-        }`}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  isOverdue
-                    ? "bg-red-100 text-red-700"
-                    : "bg-blue-100 text-blue-700"
-                }`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    isOverdue ? "bg-red-500" : "bg-blue-500"
-                  }`}
-                />
-                {status === "overdue" ? "Overdue" : "Upcoming"}
-              </span>
-              <span className="text-gray-400">•</span>
-              <span className="text-gray-600">{formatDate(reminder.dueDate)}</span>
-            </div>
-            <p className="mt-2 truncate text-sm font-semibold text-gray-900">
-              {reminder.treeName}
-            </p>
-            <p className="mt-1 text-sm leading-snug text-gray-700">
-              {reminder.message}
-            </p>
-          </div>
-          <button
-            onClick={() => onComplete(reminder.id)}
-            className="shrink-0 rounded-full border border-green-200 px-3 py-1 text-xs font-medium text-green-700 transition hover:bg-green-50 hover:text-green-800"
-          >
-            <div className="flex items-center gap-1">
-              <CheckCircle className="h-4 w-4" />
-              <span>Done</span>
-            </div>
-          </button>
-        </div>
-      </div>
-    );
-  };
+    const sorted = [...reminders].sort((a, b) => {
+      const aTime = getSafeTimestamp(a.dueDate, Number.MAX_SAFE_INTEGER);
+      const bTime = getSafeTimestamp(b.dueDate, Number.MAX_SAFE_INTEGER);
+      return aTime - bTime;
+    });
+
+    const grouped = { overdueReminders: [], upcomingReminders: [] };
+
+    sorted.forEach((reminder) => {
+      const dueTime = getSafeTimestamp(reminder.dueDate);
+      if (dueTime !== null && dueTime < todayTimestamp) {
+        grouped.overdueReminders.push(reminder);
+      } else {
+        grouped.upcomingReminders.push(reminder);
+      }
+    });
+
+    return grouped;
+  }, [reminders, todayTimestamp]);
 
   // ─── Add Tree Logic ───────────────────────────────────────────
   const handleAddTree = async (treeData) => {
@@ -252,18 +296,9 @@ const Home = () => {
       return nameMatch || speciesMatch || stageMatch;
     });
 
-    const parseDate = (value) => {
-      if (!value) {
-        return 0;
-      }
-
-      const time = new Date(value).getTime();
-      return Number.isNaN(time) ? 0 : time;
-    };
-
     const sortByRecent = (a, b) => {
-      const aTime = parseDate(a.lastUpdate);
-      const bTime = parseDate(b.lastUpdate);
+      const aTime = getSafeTimestamp(a.lastUpdate, 0) ?? 0;
+      const bTime = getSafeTimestamp(b.lastUpdate, 0) ?? 0;
       return bTime - aTime;
     };
 
@@ -289,8 +324,8 @@ const Home = () => {
           return aIndex - bIndex;
         }
         case "age": {
-          const aTime = parseDate(a.acquisitionDate);
-          const bTime = parseDate(b.acquisitionDate);
+          const aTime = getSafeTimestamp(a.acquisitionDate, 0) ?? 0;
+          const bTime = getSafeTimestamp(b.acquisitionDate, 0) ?? 0;
 
           if (aTime === bTime) {
             return sortByRecent(a, b);
@@ -472,9 +507,9 @@ const Home = () => {
                       <ReminderCard
                         key={r.id}
                         reminder={r}
-                        formatDate={formatDate}
                         onComplete={handleCompleteReminder}
                         status="overdue"
+                        todayStart={todayStart}
                       />
                     ))}
                   </div>
@@ -492,9 +527,9 @@ const Home = () => {
                       <ReminderCard
                         key={r.id}
                         reminder={r}
-                        formatDate={formatDate}
                         onComplete={handleCompleteReminder}
                         status="upcoming"
+                        todayStart={todayStart}
                       />
                     ))}
                   </div>
