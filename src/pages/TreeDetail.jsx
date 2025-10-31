@@ -32,6 +32,8 @@ import { useTrees } from "../context/TreesContext";
 import { extractPhotoDate } from "../utils/photoMetadata";
 import { useSpecies } from "../context/SpeciesContext";
 import ReactMarkdown from "react-markdown";
+import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
+import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -1360,12 +1362,12 @@ const TreeDetail = () => {
 
           {isEditingNotes ? (
             <div className="space-y-3">
-              <textarea
+              <MarkdownReadmeEditor
                 value={notesDraft}
-                onChange={(event) => setNotesDraft(event.target.value)}
-                rows={8}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
-                placeholder="Add notes about this tree's care, styling, or history using Markdown formatting."
+                onChange={setNotesDraft}
+                rows={12}
+                placeholder="Create a README-style log for this tree with Markdown headings, lists, and tables."
+                template={SPECIES_CARE_TEMPLATE}
               />
             </div>
           ) : hasNotes ? (
