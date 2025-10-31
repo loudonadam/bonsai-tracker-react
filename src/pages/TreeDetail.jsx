@@ -32,8 +32,8 @@ import { useTrees } from "../context/TreesContext";
 import { extractPhotoDate } from "../utils/photoMetadata";
 import { useSpecies } from "../context/SpeciesContext";
 import ReactMarkdown from "react-markdown";
+import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
-import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -1367,12 +1367,14 @@ const TreeDetail = () => {
                 onChange={setNotesDraft}
                 rows={12}
                 placeholder="Create a README-style log for this tree with Markdown headings, lists, and tables."
-                template={SPECIES_CARE_TEMPLATE}
+                autoFocus
               />
             </div>
           ) : hasNotes ? (
             <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-              <ReactMarkdown>{tree.notes}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkSimpleGfmTables]}>
+                {tree.notes}
+              </ReactMarkdown>
             </div>
           ) : (
             <p className="text-gray-500 italic">

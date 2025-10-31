@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Edit, Plus, BookOpen, Trees, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
 import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 import { useSpecies } from "../context/SpeciesContext";
@@ -46,7 +47,9 @@ const ExpandableNote = ({ content, collapsedHeight = 200 }) => {
     <div className="relative">
       <div style={style} aria-expanded={expanded}>
         <div ref={contentRef} className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-          <ReactMarkdown>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkSimpleGfmTables]}>
+            {content}
+          </ReactMarkdown>
         </div>
       </div>
 
@@ -229,7 +232,6 @@ const Species = () => {
                   }
                   rows={10}
                   placeholder="Document species care requirements using Markdown headings, lists, and tables."
-                  template={SPECIES_CARE_TEMPLATE}
                 />
                 <div className="flex justify-end gap-2">
                   <button
@@ -281,7 +283,6 @@ const Species = () => {
                       }
                       rows={12}
                       placeholder="Update the species care README with Markdown headings, lists, and tables."
-                      template={SPECIES_CARE_TEMPLATE}
                     />
                     <div className="flex justify-end gap-2">
                       <button

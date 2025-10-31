@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 
 const tabs = [
   { id: "write", label: "Write" },
@@ -11,27 +12,59 @@ const MarkdownReadmeEditor = ({
   onChange,
   placeholder = "Write your notes in Markdown...",
   rows = 10,
-  template,
-  templateLabel = "Use care template",
   className = "",
+  autoFocus = false,
 }) => {
   const [activeTab, setActiveTab] = useState("write");
+  const textareaRef = useRef(null);
+  const selectionRef = useRef({ start: null, end: null });
 
-  const handleInsertTemplate = () => {
-    if (!template) return;
-
-    const shouldReplace = !value.trim()
-      ? true
-      : typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Replace the current content with the default template? You can always edit it afterward.",
-          );
-
-    if (shouldReplace) {
-      onChange(template);
-      setActiveTab("write");
+  useEffect(() => {
+    if (!autoFocus || activeTab !== "write") {
+      return;
     }
+
+    const node = textareaRef.current;
+    if (!node) {
+      return;
+    }
+
+    node.focus({ preventScroll: true });
+
+    const { start, end } = selectionRef.current;
+    if (start != null && end != null) {
+      node.setSelectionRange(start, end);
+    } else {
+      const length = node.value.length;
+      node.setSelectionRange(length, length);
+    }
+  }, [autoFocus, activeTab, value]);
+
+  const handleChange = (event) => {
+    const { selectionStart, selectionEnd, value: nextValue } = event.target;
+    selectionRef.current = { start: selectionStart, end: selectionEnd };
+    onChange(nextValue);
+
+    if (!autoFocus) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const node = textareaRef.current;
+      if (!node) {
+        return;
+      }
+
+      node.focus({ preventScroll: true });
+
+      const { start, end } = selectionRef.current;
+      if (start != null && end != null) {
+        node.setSelectionRange(start, end);
+      } else {
+        const length = node.value.length;
+        node.setSelectionRange(length, length);
+      }
+    });
   };
 
   return (
@@ -54,31 +87,24 @@ const MarkdownReadmeEditor = ({
             </button>
           ))}
         </div>
-
-        {template && (
-          <button
-            type="button"
-            onClick={handleInsertTemplate}
-            className="inline-flex items-center gap-1 rounded-md border border-green-600 bg-white px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 transition"
-          >
-            {templateLabel}
-          </button>
-        )}
       </div>
 
       {activeTab === "write" ? (
         <textarea
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={handleChange}
           rows={rows}
           placeholder={placeholder}
+          ref={textareaRef}
           className="w-full border-none px-3 py-3 text-sm font-mono focus:outline-none focus:ring-0 resize-y"
         />
       ) : (
         <div className="px-3 py-3 text-sm" style={{ minHeight: `${rows * 1.25}rem` }}>
           {value.trim() ? (
             <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-              <ReactMarkdown>{value}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkSimpleGfmTables]}>
+                {value}
+              </ReactMarkdown>
             </div>
           ) : (
             <p className="text-gray-400 italic">Nothing to preview yet.</p>
