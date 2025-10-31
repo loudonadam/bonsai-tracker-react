@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Edit, Plus, BookOpen, Trees, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
+import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 import { useSpecies } from "../context/SpeciesContext";
 
 // ─── ExpandableNote component ───────────────────────────────────
@@ -86,7 +88,7 @@ const Species = () => {
   const initialAddForm = useRef({
     commonName: "",
     scientificName: "",
-    notes: "",
+    notes: SPECIES_CARE_TEMPLATE,
   }).current;
   const [isAddingSpecies, setIsAddingSpecies] = useState(false);
   const [newSpeciesData, setNewSpeciesData] = useState(initialAddForm);
@@ -217,17 +219,17 @@ const Species = () => {
                   placeholder="Scientific Name"
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
                 />
-                <textarea
+                <MarkdownReadmeEditor
                   value={newSpeciesData.notes}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setNewSpeciesData((prev) => ({
                       ...prev,
-                      notes: event.target.value,
+                      notes: value,
                     }))
                   }
-                  placeholder="Add care notes (Markdown supported)"
-                  rows={6}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono resize-y"
+                  rows={10}
+                  placeholder="Document species care requirements using Markdown headings, lists, and tables."
+                  template={SPECIES_CARE_TEMPLATE}
                 />
                 <div className="flex justify-end gap-2">
                   <button
@@ -272,14 +274,14 @@ const Species = () => {
                       placeholder="Scientific Name"
                       className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
                     />
-                    <textarea
+                    <MarkdownReadmeEditor
                       value={formData.notes}
-                      onChange={(e) =>
-                        setFormData({ ...formData, notes: e.target.value })
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, notes: value }))
                       }
-                      placeholder="Write species care notes (Markdown supported)"
-                      rows={8}
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono resize-y"
+                      rows={12}
+                      placeholder="Update the species care README with Markdown headings, lists, and tables."
+                      template={SPECIES_CARE_TEMPLATE}
                     />
                     <div className="flex justify-end gap-2">
                       <button

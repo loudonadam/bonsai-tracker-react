@@ -163,3 +163,55 @@ npm run dev -- --host
 ```
 
 You now have a complete local bonsai-tracking stack with persistent storage, photo management, and an API-driven React interface.
+
+---
+
+## 7. README formatting guide
+
+The project now includes README-style editors for species care notes and individual tree logs. These editors expect Markdown so you can build rich documents without leaving the app. Here is a quick refresher on common patterns you can mix and match when writing structured plant guides:
+
+- **Headings** – use `#` through `####` to define document hierarchy (e.g., `## Watering`).
+- **Emphasis** – wrap text in `*italic*` or `**bold**` to call out important care tips.
+- **Lists** – start lines with `-` or `1.` to create unordered or ordered lists for step-by-step instructions.
+- **Tables** – surround column headers with pipes (`|`) and use `---` as a divider row to build seasonal care matrices.
+- **Links & media** – `[Link text](https://example.com)` embeds references; `![Caption](image-url)` inserts hosted photos.
+
+### Care README default template
+
+Use the following template as a starting point when documenting a species or a specific bonsai. Each section is meant to be customized with the details you collect over time.
+
+```markdown
+## Light
+- Preferred conditions:
+
+## Watering
+- Preferred moisture level:
+
+## Temperature
+- Cold tolerance:
+
+## Fertilization
+- Notes:
+
+## Pruning & Training
+- Notes:
+
+## Soil
+- Preferred Composition:
+
+## Repotting
+- Frequency:
+
+## Pests & Diseases
+- Common issues and treatments:
+
+## Seasonal Care Summary Table
+| Season | Care Focus | Notes |
+| --- | --- | --- |
+| Spring |  |  |
+| Summer |  |  |
+| Autumn |  |  |
+| Winter |  |  |
+```
+
+You can insert this template directly from the in-app editor and then refine each field with bonsai-specific knowledge, photos, and links.
