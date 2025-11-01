@@ -76,9 +76,22 @@ export const SpeciesProvider = ({ children }) => {
     return mapped;
   }, []);
 
+  const deleteSpecies = useCallback(async (id) => {
+    await apiClient.delete(`/species/${id}`);
+    setSpecies((prev) => prev.filter((item) => Number(item.id) !== Number(id)));
+  }, []);
+
   const value = useMemo(
-    () => ({ species, loading, error, refreshSpecies, addSpecies, updateSpecies }),
-    [species, loading, error, refreshSpecies, addSpecies, updateSpecies]
+    () => ({
+      species,
+      loading,
+      error,
+      refreshSpecies,
+      addSpecies,
+      updateSpecies,
+      deleteSpecies,
+    }),
+    [species, loading, error, refreshSpecies, addSpecies, updateSpecies, deleteSpecies]
   );
 
   return <SpeciesContext.Provider value={value}>{children}</SpeciesContext.Provider>;

@@ -9,6 +9,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Trash,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
@@ -20,7 +21,7 @@ import { useSpecies } from "../context/SpeciesContext";
 // ─── Species page ─────────────────────────────────────────────
 const Species = () => {
   const navigate = useNavigate();
-  const { species: speciesList, updateSpecies, addSpecies } = useSpecies();
+  const { species: speciesList, updateSpecies, addSpecies, deleteSpecies } = useSpecies();
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     commonName: "",
@@ -37,6 +38,8 @@ const Species = () => {
   const [addSpeciesError, setAddSpeciesError] = useState("");
   const [isSavingNewSpecies, setIsSavingNewSpecies] = useState(false);
   const [expandedSpeciesId, setExpandedSpeciesId] = useState(null);
+  const [deletingSpeciesId, setDeletingSpeciesId] = useState(null);
+  const [deleteErrors, setDeleteErrors] = useState({});
 
   const handleEdit = (species) => {
     setEditingId(species.id);
@@ -60,6 +63,36 @@ const Species = () => {
   const handleCancel = () => {
     setEditingId(null);
     setExpandedSpeciesId(null);
+  };
+
+  const handleDeleteSpecies = async (species) => {
+    const confirmed = window.confirm(
+      `Delete ${species.commonName || "this species"}? This action cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingSpeciesId(species.id);
+    setDeleteErrors((prev) => ({ ...prev, [species.id]: "" }));
+
+    try {
+      await deleteSpecies(species.id);
+      if (editingId === species.id) {
+        setEditingId(null);
+      }
+      if (expandedSpeciesId === species.id) {
+        setExpandedSpeciesId(null);
+      }
+    } catch (error) {
+      setDeleteErrors((prev) => ({
+        ...prev,
+        [species.id]: error.message || "Failed to delete species. Please try again.",
+      }));
+    } finally {
+      setDeletingSpeciesId(null);
+    }
   };
 
   const openAddSpeciesForm = () => {
@@ -285,14 +318,29 @@ const Species = () => {
 
                     {isExpanded && (
                       <div className="mt-4 space-y-3">
-                        <div className="flex justify-end">
-                          <button
-                            onClick={() => handleEdit(species)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
-                          >
-                            <Edit className="w-4 h-4" />
-                            Edit Species
-                          </button>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          {deleteErrors[species.id] && (
+                            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                              {deleteErrors[species.id]}
+                            </p>
+                          )}
+                          <div className="flex justify-end gap-2 sm:ml-auto">
+                            <button
+                              onClick={() => handleDeleteSpecies(species)}
+                              disabled={deletingSpeciesId === species.id}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              <Trash className="w-4 h-4" />
+                              {deletingSpeciesId === species.id ? "Deleting..." : "Delete"}
+                            </button>
+                            <button
+                              onClick={() => handleEdit(species)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                            >
+                              <Edit className="w-4 h-4" />
+                              Edit Species
+                            </button>
+                          </div>
                         </div>
 
                         <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
