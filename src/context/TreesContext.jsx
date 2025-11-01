@@ -372,6 +372,39 @@ export const TreesProvider = ({ children }) => {
     return mappedPhoto;
   }, [updateTreeReferences]);
 
+  const deleteTreePhoto = useCallback(
+    async (treeId, photoId) => {
+      await apiClient.delete(`/bonsai/${treeId}/photos/${photoId}`);
+      const updatedTree = updateTreeReferences(treeId, (tree) => {
+        const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
+        const filteredPhotos = existingPhotos.filter(
+          (photo) => Number(photo.id) !== Number(photoId)
+        );
+
+        const nextPrimary =
+          filteredPhotos.find((photo) => photo.isPrimary) ?? filteredPhotos[0] ?? null;
+
+        return {
+          ...tree,
+          photos: filteredPhotos,
+          photoUrl: nextPrimary
+            ? nextPrimary.thumbnailUrl || nextPrimary.url || nextPrimary.fullUrl || null
+            : filteredPhotos.length === 0
+            ? null
+            : tree.photoUrl,
+          fullPhotoUrl: nextPrimary
+            ? nextPrimary.fullUrl || nextPrimary.url || null
+            : filteredPhotos.length === 0
+            ? null
+            : tree.fullPhotoUrl,
+        };
+      });
+
+      return updatedTree;
+    },
+    [updateTreeReferences]
+  );
+
   const getTreeById = useCallback(
     (treeId) => {
       const tree = trees.find((item) => Number(item.id) === Number(treeId));
@@ -488,6 +521,7 @@ export const TreesProvider = ({ children }) => {
       fetchTreeById,
       uploadTreePhoto,
       updateTreePhoto,
+      deleteTreePhoto,
     }),
     [
       trees,
@@ -504,6 +538,7 @@ export const TreesProvider = ({ children }) => {
       fetchTreeById,
       uploadTreePhoto,
       updateTreePhoto,
+      deleteTreePhoto,
     ]
   );
 

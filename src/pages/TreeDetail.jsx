@@ -35,6 +35,8 @@ import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
+import ExportProgressOverlay from "../components/ExportProgressOverlay";
+import { getApiBaseUrl } from "../services/apiClient";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -119,6 +121,7 @@ const TreeDetail = () => {
     uploadTreePhoto,
     updateTree,
     updateTreePhoto,
+    deleteTreePhoto,
     loading: treesLoading,
   } = useTrees();
   const { species: speciesList, addSpecies, refreshSpecies } = useSpecies();
@@ -176,11 +179,20 @@ const TreeDetail = () => {
   const [photoEditError, setPhotoEditError] = useState("");
   const [isSavingPhotoEdit, setIsSavingPhotoEdit] = useState(false);
   const [photoActionError, setPhotoActionError] = useState("");
+  const [isExportingTree, setIsExportingTree] = useState(false);
+  const [exportStatusMessage, setExportStatusMessage] = useState(
+    "We're preparing your tree export. This may take a few moments."
+  );
+  const [showDeletePhotoModal, setShowDeletePhotoModal] = useState(false);
+  const [photoToDelete, setPhotoToDelete] = useState(null);
+  const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
+  const [photoDeleteError, setPhotoDeleteError] = useState("");
   const [isSettingPrimary, setIsSettingPrimary] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState(tree?.notes ?? "");
 
   const hasAttemptedRefreshRef = useRef(false);
+  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
 
   const calculateAge = (dateString) => {
     if (!dateString) {
@@ -735,18 +747,66 @@ const TreeDetail = () => {
     );
   };
 
-  const handleExportTree = () => {
-    const data = JSON.stringify(tree, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    const sanitizedName = tree.name ? tree.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'tree';
-    anchor.download = `${sanitizedName || 'tree'}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
+  const handleExportTree = async () => {
+    if (!tree?.id) {
+      return;
+    }
+
+    setExportStatusMessage(
+      "We're preparing your tree export. This may take a few moments."
+    );
+    setIsExportingTree(true);
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/backup/bonsai/${tree.id}/export`,
+        {
+          method: "GET",
+        }
+      );
+      const blob = await response.blob();
+
+      if (!response.ok) {
+        let message = `Export failed with status ${response.status}`;
+        try {
+          const errorText = await blob.text();
+          const data = JSON.parse(errorText);
+          if (data?.detail) {
+            message = data.detail;
+          }
+        } catch {
+          /* ignore parsing errors */
+        }
+        throw new Error(message);
+      }
+
+      setExportStatusMessage("Starting your download…");
+
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      const sanitizedName = tree.name
+        ? tree.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "")
+        : "tree";
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const fileBase = sanitizedName || "tree";
+      link.download = `${fileBase}_${tree.id}_${timestamp}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error("Failed to export tree", error);
+      alert(error.message || "Unable to export this tree.");
+    } finally {
+      setIsExportingTree(false);
+      setExportStatusMessage(
+        "We're preparing your tree export. This may take a few moments."
+      );
+    }
   };
 
   const handleStageChange = async (stageValue) => {
@@ -877,6 +937,57 @@ const TreeDetail = () => {
       setPhotoEditError(photoError.message ?? "Unable to update photo details.");
     } finally {
       setIsSavingPhotoEdit(false);
+    }
+  };
+
+  const openDeletePhotoModal = (photo) => {
+    if (!photo || photo.id === "placeholder") {
+      return;
+    }
+
+    setPhotoDeleteError("");
+    setPhotoActionError("");
+    setPhotoToDelete(photo);
+    setShowDeletePhotoModal(true);
+  };
+
+  const closeDeletePhotoModal = () => {
+    setShowDeletePhotoModal(false);
+    setPhotoToDelete(null);
+    setPhotoDeleteError("");
+    setIsDeletingPhoto(false);
+  };
+
+  const handleConfirmDeletePhoto = async () => {
+    if (!tree?.id || !photoToDelete?.id) {
+      return;
+    }
+
+    setIsDeletingPhoto(true);
+    setPhotoDeleteError("");
+    setPhotoActionError("");
+
+    try {
+      const updatedTree = await deleteTreePhoto(tree.id, photoToDelete.id);
+      if (updatedTree) {
+        setTree(updatedTree);
+        const photos = Array.isArray(updatedTree.photos) ? updatedTree.photos : [];
+        setCurrentPhotoIndex((prev) => {
+          if (photos.length === 0) {
+            return 0;
+          }
+          return Math.min(prev, photos.length - 1);
+        });
+      }
+
+      closeDeletePhotoModal();
+    } catch (error) {
+      const message =
+        error?.message || "Failed to delete photo. Please try again.";
+      setPhotoDeleteError(message);
+      setPhotoActionError(message);
+    } finally {
+      setIsDeletingPhoto(false);
     }
   };
 
@@ -1449,6 +1560,15 @@ const TreeDetail = () => {
               >
                 <Edit className="w-4 h-4" />
               </button>
+              <button
+                type="button"
+                onClick={() => openDeletePhotoModal(currentPhoto)}
+                disabled={isDeletingPhoto}
+                className="rounded-full bg-white/90 p-2 text-rose-600 shadow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Delete photo"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           )}
 
@@ -1712,7 +1832,13 @@ const TreeDetail = () => {
 
   // ─── Render ───────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 px-2 sm:px-4 lg:px-6">
+    <>
+      <ExportProgressOverlay
+        open={isExportingTree}
+        title="Preparing tree export"
+        description={exportStatusMessage}
+      />
+      <div className="min-h-screen bg-gray-50 px-2 sm:px-4 lg:px-6">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
@@ -2474,6 +2600,57 @@ const TreeDetail = () => {
         </div>
       )}
 
+      {showDeletePhotoModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative space-y-4">
+            <button
+              type="button"
+              onClick={closeDeletePhotoModal}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+              aria-label="Close delete photo dialog"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Delete this photo?</h3>
+                <p className="text-sm text-gray-600">
+                  This action will permanently remove the photo and its thumbnail from your collection.
+                </p>
+              </div>
+            </div>
+
+            {photoDeleteError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {photoDeleteError}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeDeletePhotoModal}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletePhoto}
+                disabled={isDeletingPhoto}
+                className="px-4 py-2 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition disabled:cursor-not-allowed disabled:bg-rose-300"
+              >
+                {isDeletingPhoto ? "Deleting..." : "Delete photo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Accolade Modal */}
       {showAccoladeModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
@@ -2829,6 +3006,7 @@ const TreeDetail = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
 

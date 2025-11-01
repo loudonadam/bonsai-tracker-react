@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Upload, Download, Save } from "lucide-react";
 
 import { getApiBaseUrl } from "../services/apiClient";
+import ExportProgressOverlay from "../components/ExportProgressOverlay";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -14,6 +15,10 @@ const Settings = () => {
   });
   const fileInputRef = useRef(null);
   const apiBaseUrl = getApiBaseUrl();
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatusMessage, setExportStatusMessage] = useState(
+    "We're gathering your bonsai collection. This may take a moment."
+  );
 
   const handleNameSave = () => {
     alert(`Collection name saved as: ${collectionName}`);
@@ -23,6 +28,10 @@ const Settings = () => {
 
   const handleExport = async () => {
     try {
+      setExportStatusMessage(
+        "We're gathering your bonsai collection. This may take a moment."
+      );
+      setIsExporting(true);
       const response = await fetch(`${apiBaseUrl}/backup/export`, {
         method: "GET",
       });
@@ -42,6 +51,7 @@ const Settings = () => {
         throw new Error(message);
       }
 
+      setExportStatusMessage("Starting your download…");
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
@@ -54,6 +64,8 @@ const Settings = () => {
     } catch (error) {
       console.error("Failed to export bonsai data", error);
       alert(error.message || "Unable to export bonsai data.");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -111,7 +123,13 @@ const Settings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
+      <ExportProgressOverlay
+        open={isExporting}
+        title="Preparing data export"
+        description={exportStatusMessage}
+      />
+      <div className="min-h-screen bg-gray-50">
       {/* HEADER */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between">
@@ -194,7 +212,8 @@ const Settings = () => {
           </button>
         </section>
       </main>
-    </div>
+      </div>
+    </>
   );
 };
 

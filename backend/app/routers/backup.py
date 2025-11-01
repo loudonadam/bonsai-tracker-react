@@ -770,6 +770,326 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
     return StreamingResponse(buffer, media_type="application/zip", headers=headers)
 
 
+@router.get("/bonsai/{bonsai_id}/export")
+def export_single_bonsai(bonsai_id: int, db: Session = Depends(get_db)) -> StreamingResponse:
+    """Export the data and media for a single bonsai as a ZIP archive."""
+
+    tree = (
+        db.query(models.Bonsai)
+        .options(
+            selectinload(models.Bonsai.species),
+            selectinload(models.Bonsai.measurements),
+            selectinload(models.Bonsai.updates),
+            selectinload(models.Bonsai.photos),
+            selectinload(models.Bonsai.notifications),
+            selectinload(models.Bonsai.graveyard_entry),
+        )
+        .filter(models.Bonsai.id == bonsai_id)
+        .first()
+    )
+
+    if not tree:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bonsai not found")
+
+    buffer = io.BytesIO()
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        metadata = {
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "version": "2.1",
+            "scope": "single-tree",
+            "bonsai_id": tree.id,
+        }
+        archive.writestr("metadata.json", json.dumps(metadata, indent=2))
+
+        species = tree.species
+        _write_csv(
+            archive,
+            "data/species.csv",
+            [
+                "id",
+                "common_name",
+                "scientific_name",
+                "description",
+                "care_instructions",
+                "tree_count",
+                "created_at",
+                "updated_at",
+            ],
+            (
+                [
+                    {
+                        "id": species.id,
+                        "common_name": species.common_name,
+                        "scientific_name": species.scientific_name or "",
+                        "description": species.description or "",
+                        "care_instructions": species.care_instructions or "",
+                        "tree_count": species.tree_count,
+                        "created_at": _iso_datetime(species.created_at),
+                        "updated_at": _iso_datetime(species.updated_at),
+                    }
+                ]
+                if species
+                else []
+            ),
+        )
+
+        folder = f"{tree.id:04d}_{_slugify(tree.name)}"
+        tree_dir = f"data/trees/{folder}"
+
+        _write_csv(
+            archive,
+            f"{tree_dir}/overview.csv",
+            [
+                "id",
+                "name",
+                "species_id",
+                "species_common_name",
+                "species_scientific_name",
+                "status",
+                "acquisition_date",
+                "origin_date",
+                "location",
+                "notes",
+                "development_stage",
+                "created_at",
+                "updated_at",
+            ],
+            [
+                {
+                    "id": tree.id,
+                    "name": tree.name,
+                    "species_id": tree.species_id or "",
+                    "species_common_name": species.common_name if species else "",
+                    "species_scientific_name": species.scientific_name or "" if species else "",
+                    "status": tree.status,
+                    "acquisition_date": _iso_date(tree.acquisition_date),
+                    "origin_date": _iso_date(tree.origin_date),
+                    "location": tree.location or "",
+                    "notes": tree.notes or "",
+                    "development_stage": tree.development_stage or "",
+                    "created_at": _iso_datetime(tree.created_at),
+                    "updated_at": _iso_datetime(tree.updated_at),
+                }
+            ],
+        )
+
+        measurements = sorted(
+            tree.measurements,
+            key=lambda measurement: measurement.measured_at or datetime.min,
+        )
+        _write_csv(
+            archive,
+            f"{tree_dir}/measurements.csv",
+            [
+                "id",
+                "measured_at",
+                "height_cm",
+                "trunk_diameter_cm",
+                "canopy_width_cm",
+                "notes",
+                "created_at",
+            ],
+            (
+                {
+                    "id": measurement.id,
+                    "measured_at": _iso_datetime(measurement.measured_at),
+                    "height_cm": measurement.height_cm if measurement.height_cm is not None else "",
+                    "trunk_diameter_cm": measurement.trunk_diameter_cm
+                    if measurement.trunk_diameter_cm is not None
+                    else "",
+                    "canopy_width_cm": measurement.canopy_width_cm
+                    if measurement.canopy_width_cm is not None
+                    else "",
+                    "notes": measurement.notes or "",
+                    "created_at": _iso_datetime(measurement.created_at),
+                }
+                for measurement in measurements
+            ),
+        )
+
+        updates = sorted(
+            tree.updates,
+            key=lambda update: update.performed_at or datetime.min,
+        )
+        _write_csv(
+            archive,
+            f"{tree_dir}/updates.csv",
+            ["id", "title", "description", "performed_at", "created_at", "updated_at"],
+            (
+                {
+                    "id": update.id,
+                    "title": update.title,
+                    "description": update.description or "",
+                    "performed_at": _iso_datetime(update.performed_at),
+                    "created_at": _iso_datetime(update.created_at),
+                    "updated_at": _iso_datetime(update.updated_at),
+                }
+                for update in updates
+            ),
+        )
+
+        update_titles = {update.id: update.title for update in updates}
+        photos = sorted(
+            tree.photos,
+            key=lambda photo: photo.created_at or datetime.min,
+        )
+        _write_csv(
+            archive,
+            f"{tree_dir}/photos.csv",
+            [
+                "id",
+                "description",
+                "taken_at",
+                "full_path",
+                "thumbnail_path",
+                "is_primary",
+                "update_id",
+                "update_title",
+                "created_at",
+            ],
+            (
+                {
+                    "id": photo.id,
+                    "description": photo.description or "",
+                    "taken_at": _iso_datetime(photo.taken_at),
+                    "full_path": photo.full_path,
+                    "thumbnail_path": photo.thumbnail_path,
+                    "is_primary": _bool_to_str(photo.is_primary),
+                    "update_id": photo.update_id or "",
+                    "update_title": update_titles.get(photo.update_id, ""),
+                    "created_at": _iso_datetime(photo.created_at),
+                }
+                for photo in photos
+            ),
+        )
+
+        media_root = settings.media_root
+        tree_media_dir = Path(tree_dir) / "photos"
+        for photo in photos:
+            for path_value, prefix in (
+                (photo.full_path, "full"),
+                (photo.thumbnail_path, "thumbs"),
+            ):
+                subpath = _normalize_photo_subpath(path_value, prefix)
+                if subpath is None:
+                    continue
+
+                path_obj = Path(path_value)
+                if path_obj.is_absolute():
+                    source_path = path_obj
+                else:
+                    if not media_root.exists():
+                        continue
+                    source_path = media_root / path_obj
+
+                if not source_path.exists() or not source_path.is_file():
+                    continue
+
+                destination = tree_media_dir / prefix / subpath
+                archive.write(source_path, destination.as_posix())
+
+        notifications = sorted(
+            tree.notifications,
+            key=lambda notification: notification.due_at
+            or notification.created_at
+            or datetime.min,
+        )
+        _write_csv(
+            archive,
+            f"{tree_dir}/notifications.csv",
+            ["id", "title", "message", "category", "due_at", "read", "created_at"],
+            (
+                {
+                    "id": notification.id,
+                    "title": notification.title,
+                    "message": notification.message,
+                    "category": notification.category or "",
+                    "due_at": _iso_datetime(notification.due_at),
+                    "read": _bool_to_str(notification.read),
+                    "created_at": _iso_datetime(notification.created_at),
+                }
+                for notification in notifications
+            ),
+        )
+
+        graveyard_entry = tree.graveyard_entry
+        if graveyard_entry:
+            _write_csv(
+                archive,
+                f"{tree_dir}/graveyard.csv",
+                ["id", "category", "note", "moved_at"],
+                [
+                    {
+                        "id": graveyard_entry.id,
+                        "category": graveyard_entry.category,
+                        "note": graveyard_entry.note or "",
+                        "moved_at": _iso_datetime(graveyard_entry.moved_at),
+                    }
+                ],
+            )
+        else:
+            _write_csv(
+                archive,
+                f"{tree_dir}/graveyard.csv",
+                ["id", "category", "note", "moved_at"],
+                [],
+            )
+
+        _write_csv(
+            archive,
+            "data/trees/index.csv",
+            [
+                "id",
+                "name",
+                "species_id",
+                "species_common_name",
+                "species_scientific_name",
+                "acquisition_date",
+                "origin_date",
+                "location",
+                "notes",
+                "development_stage",
+                "status",
+                "created_at",
+                "updated_at",
+                "folder",
+            ],
+            [
+                {
+                    "id": tree.id,
+                    "name": tree.name,
+                    "species_id": tree.species_id or "",
+                    "species_common_name": species.common_name if species else "",
+                    "species_scientific_name": species.scientific_name or "" if species else "",
+                    "acquisition_date": _iso_date(tree.acquisition_date),
+                    "origin_date": _iso_date(tree.origin_date),
+                    "location": tree.location or "",
+                    "notes": tree.notes or "",
+                    "development_stage": tree.development_stage or "",
+                    "status": tree.status,
+                    "created_at": _iso_datetime(tree.created_at),
+                    "updated_at": _iso_datetime(tree.updated_at),
+                    "folder": folder,
+                }
+            ],
+        )
+
+        _write_csv(
+            archive,
+            "data/general/notifications.csv",
+            ["id", "title", "message", "category", "due_at", "read", "created_at"],
+            [],
+        )
+
+    buffer.seek(0)
+    slug = _slugify(tree.name)
+    filename = f"bonsai_{tree.id:04d}_{slug}_{timestamp}.zip"
+    headers = {"Content-Disposition": f"attachment; filename=\"{filename}\""}
+    return StreamingResponse(buffer, media_type="application/zip", headers=headers)
+
+
 def _safe_extract(zip_file: zipfile.ZipFile, destination: Path) -> None:
     for member in zip_file.infolist():
         member_path = Path(member.filename)

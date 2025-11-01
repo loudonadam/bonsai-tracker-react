@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -86,8 +87,30 @@ def delete_photo(bonsai_id: int, photo_id: int, db: Session = Depends(get_db)):
     if not photo or photo.bonsai_id != bonsai_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
+    media_paths: list[Path] = []
+    for stored_path in (photo.full_path, photo.thumbnail_path):
+        if not stored_path:
+            continue
+
+        try:
+            candidate = Path(stored_path)
+        except TypeError:  # pragma: no cover - defensive
+            continue
+
+        if not candidate.is_absolute():
+            candidate = settings.media_root / candidate
+
+        media_paths.append(candidate)
+
     db.delete(photo)
     db.commit()
+
+    for path in media_paths:
+        try:
+            if path.exists() and path.is_file():
+                path.unlink()
+        except OSError:  # pragma: no cover - best effort cleanup
+            continue
 
 
 @router.patch("/{bonsai_id}/photos/{photo_id}", response_model=schemas.PhotoOut)
