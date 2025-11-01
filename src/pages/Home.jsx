@@ -153,26 +153,35 @@ const Home = () => {
   // ─── Derived Stats ───────────────────────────────────────────
   const totalTrees = trees.length;
 
-  const { avgAge, uniqueSpecies, newestTree, oldestTree } = useMemo(() => {
+  const { avgAge, uniqueSpecies, stageBreakdown } = useMemo(() => {
+    const initialCounts = DEVELOPMENT_STAGE_OPTIONS.reduce(
+      (accumulator, option) => ({ ...accumulator, [option.value]: 0 }),
+      {}
+    );
+
     if (trees.length === 0) {
       return {
         avgAge: "0.0",
         uniqueSpecies: 0,
-        newestTree: null,
-        oldestTree: null,
+        stageBreakdown: DEVELOPMENT_STAGE_OPTIONS.map((option) => ({
+          label: option.label,
+          value: 0,
+        })),
       };
     }
 
     const speciesSet = new Set();
-    let newest = null;
-    let oldest = null;
     let ageSum = 0;
     let datedTreeCount = 0;
+    const counts = { ...initialCounts };
 
     trees.forEach((tree) => {
       if (tree.species) {
         speciesSet.add(tree.species);
       }
+
+      const stageMeta = getStageMeta(tree.developmentStage);
+      counts[stageMeta.value] = (counts[stageMeta.value] ?? 0) + 1;
 
       const acquisitionTimestamp = getSafeTimestamp(tree.acquisitionDate);
       if (acquisitionTimestamp !== null) {
@@ -181,29 +190,18 @@ const Home = () => {
           ageSum += years;
           datedTreeCount += 1;
         }
-
-        if (!newest || acquisitionTimestamp > getSafeTimestamp(newest.acquisitionDate, -Infinity)) {
-          newest = tree;
-        }
-        if (!oldest || acquisitionTimestamp < getSafeTimestamp(oldest.acquisitionDate, Infinity)) {
-          oldest = tree;
-        }
       }
     });
 
-    if (!newest && trees.length > 0) {
-      newest = trees[0];
-    }
-    if (!oldest && trees.length > 0) {
-      oldest = trees[0];
-    }
+    const avgAgeValue = datedTreeCount > 0 ? (ageSum / datedTreeCount).toFixed(1) : "0.0";
 
     return {
-      avgAge:
-        datedTreeCount > 0 ? (ageSum / datedTreeCount).toFixed(1) : "0.0",
+      avgAge: avgAgeValue,
       uniqueSpecies: speciesSet.size,
-      newestTree: newest,
-      oldestTree: oldest,
+      stageBreakdown: DEVELOPMENT_STAGE_OPTIONS.map((option) => ({
+        label: option.label,
+        value: counts[option.value] ?? 0,
+      })),
     };
   }, [trees]);
 
@@ -451,12 +449,30 @@ const Home = () => {
           {/* Quick Stats */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sticky top-20">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h2>
-            <ul className="space-y-1 text-sm text-gray-700">
-              <li className="flex justify-between"><span>Total Trees:</span><span>{totalTrees}</span></li>
-              <li className="flex justify-between"><span>Unique Species:</span><span>{uniqueSpecies}</span></li>
-              <li className="flex justify-between"><span>Newest:</span><span>{newestTree ? newestTree.name : "--"}</span></li>
-              <li className="flex justify-between"><span>Oldest:</span><span>{oldestTree ? oldestTree.name : "--"}</span></li>
-              <li className="flex justify-between"><span>Avg Age:</span><span>{avgAge}y</span></li>
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex justify-between">
+                <span>Unique Species:</span>
+                <span>{uniqueSpecies}</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Average Age of Tree:</span>
+                <span>{avgAge} yrs</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Total Trees:</span>
+                <span>{totalTrees}</span>
+              </li>
+              <li>
+                <div className="text-sm font-semibold text-gray-700">Growth Stage Breakdown</div>
+                <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                  {stageBreakdown.map((stage) => (
+                    <li key={stage.label} className="flex justify-between">
+                      <span>{stage.label}</span>
+                      <span>{stage.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
             </ul>
           </div>
 

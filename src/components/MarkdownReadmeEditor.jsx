@@ -9,6 +9,7 @@ const tabs = [
 ];
 
 const MarkdownReadmeEditor = ({
+  id,
   value,
   onChange,
   placeholder = "Write your notes in Markdown...",
@@ -92,6 +93,7 @@ const MarkdownReadmeEditor = ({
 
       {activeTab === "write" ? (
         <textarea
+          id={id}
           value={value}
           onChange={handleChange}
           rows={rows}

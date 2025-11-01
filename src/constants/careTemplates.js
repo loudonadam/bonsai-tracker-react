@@ -1,32 +1,34 @@
-export const SPECIES_CARE_TEMPLATE = `## Light
-- Preferred conditions:
+export const SPECIES_CARE_TEMPLATE = `### Sun and Temperature:
+Full sun. In temps above 90F, consider a shade cloth. Do not allow to freeze, protect from cold winds and never let the pot freeze.
 
-## Watering
-- Preferred moisture level:
+---
+### Water and Soil:
+Use more organics and prefer water retention. Keep the soil moist at all times. Be wary of sagging branches in spring/fall when the tree is metabolizing heavily.
 
-## Temperature
-- Cold tolerance:
+---
+### Fertilization
+Fertilize heavily in the spring and fall.
 
-## Fertilization
-- Notes:
+---
+### Pruning & Training
+Cut back to the green in xyz blah blah blah.
 
-## Pruning & Training
-- Notes:
+---
+### Repotting
+Annual or as needed. Fast root growth.
 
-## Soil
-- Preferred Composition:
+---
+### Pests & Diseases
+Watch out for red spot.
 
-## Repotting
-- Frequency:
-
-## Pests & Diseases
-- Common issues and treatments:
-
-## Seasonal Care Summary Table
-| Season | Care Focus | Notes |
+---
+### Seasonal Care Summary Table
+| Season | Tasks | Notes |
 | --- | --- | --- |
-| Spring |  |  |
-| Summer |  |  |
+| Spring | Water heavily, repot once beds swell |  |
+| Summer |  | Watch our for scorch |
 | Autumn |  |  |
 | Winter |  |  |
-`;
+
+### Helpful links:
+[Mirai Redwood Guide](https://bonsaimirai.com/species/redwood-bonsai)`;

@@ -1,16 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  ArrowLeft,
-  Edit,
-  Plus,
-  BookOpen,
-  Trees,
-  X,
-  ChevronDown,
-  ChevronUp,
-  Trash,
-} from "lucide-react";
+import { ArrowLeft, Edit, Plus, BookOpen, Trees, X, Trash } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
@@ -37,13 +27,25 @@ const Species = () => {
   const [newSpeciesData, setNewSpeciesData] = useState(initialAddForm);
   const [addSpeciesError, setAddSpeciesError] = useState("");
   const [isSavingNewSpecies, setIsSavingNewSpecies] = useState(false);
-  const [expandedSpeciesId, setExpandedSpeciesId] = useState(null);
+  const [selectedSpeciesId, setSelectedSpeciesId] = useState(null);
   const [deletingSpeciesId, setDeletingSpeciesId] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState({});
 
+  const selectedSpecies = useMemo(
+    () =>
+      selectedSpeciesId
+        ? speciesList.find((species) => species.id === selectedSpeciesId) ?? null
+        : null,
+    [selectedSpeciesId, speciesList]
+  );
+
   const handleEdit = (species) => {
+    if (!species) {
+      return;
+    }
+
+    setSelectedSpeciesId(species.id);
     setEditingId(species.id);
-    setExpandedSpeciesId(species.id);
     setFormData({
       commonName: species.commonName,
       scientificName: species.scientificName,
@@ -60,9 +62,15 @@ const Species = () => {
     setEditingId(null);
   };
 
-  const handleCancel = () => {
+  const handleCancelEdit = () => {
+    if (selectedSpecies) {
+      setFormData({
+        commonName: selectedSpecies.commonName,
+        scientificName: selectedSpecies.scientificName,
+        notes: selectedSpecies.notes,
+      });
+    }
     setEditingId(null);
-    setExpandedSpeciesId(null);
   };
 
   const handleDeleteSpecies = async (species) => {
@@ -82,8 +90,8 @@ const Species = () => {
       if (editingId === species.id) {
         setEditingId(null);
       }
-      if (expandedSpeciesId === species.id) {
-        setExpandedSpeciesId(null);
+      if (selectedSpeciesId === species.id) {
+        setSelectedSpeciesId(null);
       }
     } catch (error) {
       setDeleteErrors((prev) => ({
@@ -129,6 +137,26 @@ const Species = () => {
     } finally {
       setIsSavingNewSpecies(false);
     }
+  };
+
+  const handleOpenSpecies = (species) => {
+    setSelectedSpeciesId(species.id);
+    setEditingId(null);
+    setFormData({
+      commonName: species.commonName,
+      scientificName: species.scientificName,
+      notes: species.notes,
+    });
+  };
+
+  const handleCloseModal = () => {
+    setSelectedSpeciesId(null);
+    setEditingId(null);
+    setFormData({
+      commonName: "",
+      scientificName: "",
+      notes: "",
+    });
   };
 
   return (
@@ -226,149 +254,208 @@ const Species = () => {
               </div>
             )}
             {speciesList.map((species) => {
-              const isExpanded = expandedSpeciesId === species.id;
+              const cleanedLines = species.notes?.trim()
+                ? species.notes
+                    .replace(/[#*_`>]/g, "")
+                    .replace(/-/g, "")
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter((line) => line.length > 0)
+                : [];
+              const previewBase = cleanedLines[0] ||
+                (species.notes?.trim()
+                  ? "Click to read species guidance."
+                  : "Click to add species guidance.");
+              const previewText =
+                previewBase.length > 160
+                  ? `${previewBase.slice(0, 157)}...`
+                  : previewBase;
 
               return (
                 <div
                   key={species.id}
-                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow transition"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleOpenSpecies(species)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleOpenSpecies(species);
+                    }
+                  }}
+                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                {editingId === species.id ? (
-                  // Edit Mode
-                  <div className="flex flex-col gap-3">
-                    <input
-                      type="text"
-                      value={formData.commonName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, commonName: e.target.value })
-                      }
-                      placeholder="Common Name"
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="text"
-                      value={formData.scientificName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, scientificName: e.target.value })
-                      }
-                      placeholder="Scientific Name"
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
-                    />
-                    <MarkdownReadmeEditor
-                      value={formData.notes}
-                      onChange={(value) =>
-                        setFormData((prev) => ({ ...prev, notes: value }))
-                      }
-                      rows={12}
-                      placeholder="Update the species care README with Markdown headings, lists, and tables."
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={handleCancel}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 text-sm"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                      >
-                        Save
-                      </button>
+                  <div className="flex justify-between items-start gap-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        {species.commonName}
+                      </h2>
+                      <p className="text-sm italic text-gray-600">
+                        {species.scientificName}
+                      </p>
                     </div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                      View Details
+                    </span>
                   </div>
-                ) : (
-                  // View Mode
-                  <div className="flex flex-col h-full">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          {species.commonName}
-                        </h2>
-                        <p className="text-sm italic text-gray-600">
-                          {species.scientificName}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() =>
-                          setExpandedSpeciesId((current) =>
-                            current === species.id ? null : species.id
-                          )
-                        }
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
-                      >
-                        {isExpanded ? (
-                          <>
-                            Collapse
-                            <ChevronUp className="w-4 h-4" />
-                          </>
-                        ) : (
-                          <>
-                            Expand
-                            <ChevronDown className="w-4 h-4" />
-                          </>
-                        )}
-                      </button>
-                    </div>
 
-                    <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-                      <Trees className="w-4 h-4 text-green-600" />
-                      {species.treeCount} tree{species.treeCount !== 1 && "s"}
-                    </div>
-
-                    {isExpanded && (
-                      <div className="mt-4 space-y-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          {deleteErrors[species.id] && (
-                            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                              {deleteErrors[species.id]}
-                            </p>
-                          )}
-                          <div className="flex justify-end gap-2 sm:ml-auto">
-                            <button
-                              onClick={() => handleDeleteSpecies(species)}
-                              disabled={deletingSpeciesId === species.id}
-                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                              <Trash className="w-4 h-4" />
-                              {deletingSpeciesId === species.id ? "Deleting..." : "Delete"}
-                            </button>
-                            <button
-                              onClick={() => handleEdit(species)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
-                            >
-                              <Edit className="w-4 h-4" />
-                              Edit Species
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-                          {species.notes?.trim() ? (
-                            <div className="markdown-body prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-                              <ReactMarkdown
-                                remarkPlugins={[remarkSimpleGfmTables]}
-                                components={markdownComponents}
-                              >
-                                {species.notes}
-                              </ReactMarkdown>
-                            </div>
-                          ) : (
-                            <p className="italic text-gray-500">
-                              No notes added yet. Expand to add guidance with the Edit button above.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                  <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
+                    <Trees className="w-4 h-4 text-green-600" />
+                    {species.treeCount} tree{species.treeCount !== 1 && "s"}
                   </div>
-                )}
+
+                  <p className="mt-4 text-sm text-gray-700">{previewText}</p>
                 </div>
               );
             })}
           </div>
         </div>
       </main>
+
+      {selectedSpecies && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50 px-4 py-6">
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-900">
+                  {selectedSpecies.commonName}
+                </h2>
+                <p className="text-sm italic text-gray-600">
+                  {selectedSpecies.scientificName}
+                </p>
+                <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                  <Trees className="w-4 h-4 text-green-600" />
+                  {selectedSpecies.treeCount} tree{selectedSpecies.treeCount !== 1 && "s"}
+                </div>
+                {deleteErrors[selectedSpecies.id] && (
+                  <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {deleteErrors[selectedSpecies.id]}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  onClick={handleCloseModal}
+                  className="inline-flex items-center justify-center rounded-full border border-gray-200 p-2 text-gray-500 hover:bg-gray-100"
+                  aria-label="Close species details"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                {editingId !== selectedSpecies.id && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDeleteSpecies(selectedSpecies)}
+                      disabled={deletingSpeciesId === selectedSpecies.id}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <Trash className="w-4 h-4" />
+                      {deletingSpeciesId === selectedSpecies.id ? "Deleting..." : "Delete"}
+                    </button>
+                    <button
+                      onClick={() => handleEdit(selectedSpecies)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit Species
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-6">
+              {editingId === selectedSpecies.id ? (
+                <div className="flex flex-col gap-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-gray-700" htmlFor="edit-common-name">
+                        Common Name
+                      </label>
+                      <input
+                        id="edit-common-name"
+                        type="text"
+                        value={formData.commonName}
+                        onChange={(event) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            commonName: event.target.value,
+                          }))
+                        }
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-gray-700" htmlFor="edit-scientific-name">
+                        Scientific Name
+                      </label>
+                      <input
+                        id="edit-scientific-name"
+                        type="text"
+                        value={formData.scientificName}
+                        onChange={(event) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            scientificName: event.target.value,
+                          }))
+                        }
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-gray-700" htmlFor="edit-notes">
+                      Species Guide
+                    </label>
+                    <MarkdownReadmeEditor
+                      id="edit-notes"
+                      value={formData.notes}
+                      onChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          notes: value,
+                        }))
+                      }
+                      rows={16}
+                      placeholder="Update the species care README with Markdown headings, lists, and tables."
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100 text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-700">
+                  {selectedSpecies.notes?.trim() ? (
+                    <div className="markdown-body prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkSimpleGfmTables]}
+                        components={markdownComponents}
+                      >
+                        {selectedSpecies.notes}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="italic text-gray-500">
+                      No notes added yet. Use the Edit button to add guidance.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
