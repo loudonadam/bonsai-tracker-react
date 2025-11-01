@@ -1,9 +1,14 @@
 const splitTableRow = (line) => {
+  if (!line) {
+    return [];
+  }
+
   const trimmed = line.trim();
-  const normalized = trimmed.replace(/^\|/, "").replace(/\|$/, "");
-  return normalized
-    .split("|")
-    .map((cell) => cell.trim());
+  const normalized = trimmed
+    .replace(/^\|/, "")
+    .replace(/\|$/, "");
+
+  return normalized.split("|").map((cell) => cell.trim());
 };
 
 const parseAlignment = (cell) => {
@@ -29,19 +34,18 @@ const parseAlignment = (cell) => {
   return null;
 };
 
-const isSeparatorRow = (line) => {
-  const cleaned = line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "");
+const isSeparatorRow = (line, expectedCellCount) => {
+  const cells = splitTableRow(line);
 
-  if (!cleaned) {
+  if (!cells.length) {
     return false;
   }
 
-  return cleaned
-    .split("|")
-    .every((segment) => /^:?[-]+:?$/.test(segment.trim()));
+  if (expectedCellCount && cells.length !== expectedCellCount) {
+    return false;
+  }
+
+  return cells.every((segment) => /^:?[-]+:?$/.test(segment.trim()));
 };
 
 const buildTableNode = (lines, position) => {
@@ -51,17 +55,17 @@ const buildTableNode = (lines, position) => {
 
   const [headerLine, separatorLine, ...bodyLines] = lines;
 
-  if (!isSeparatorRow(separatorLine)) {
-    return null;
-  }
-
   const headerCells = splitTableRow(headerLine);
-  const alignmentCells = splitTableRow(separatorLine);
 
-  if (alignmentCells.length !== headerCells.length) {
+  if (!headerCells.length) {
     return null;
   }
 
+  if (!isSeparatorRow(separatorLine, headerCells.length)) {
+    return null;
+  }
+
+  const alignmentCells = splitTableRow(separatorLine);
   const align = alignmentCells.map(parseAlignment);
 
   const headerRow = {
@@ -110,24 +114,50 @@ const remarkSimpleGfmTables = () => (tree) => {
   const nextChildren = [];
 
   tree.children.forEach((node) => {
-    if (
-      node.type === "paragraph" &&
-      node.children?.length === 1 &&
-      node.children[0].type === "text"
-    ) {
-      const rawValue = node.children[0].value;
-      const lines = rawValue.split(/\r?\n/);
+    if (node.type === "paragraph" && Array.isArray(node.children)) {
+      let rawValue = "";
+      let isPlainText = true;
 
-      if (
-        lines.length >= 2 &&
-        lines[0].trim().startsWith("|") &&
-        lines[1].includes("-")
-      ) {
-        const tableNode = buildTableNode(lines, node.position);
+      node.children.forEach((child, index) => {
+        if (child.type === "text") {
+          rawValue += child.value;
+        } else if (child.type === "break") {
+          rawValue += "\n";
+        } else {
+          isPlainText = false;
+        }
 
-        if (tableNode) {
-          nextChildren.push(tableNode);
-          return;
+        if (index < node.children.length - 1) {
+          // Preserve hard line breaks that the markdown parser kept as separate nodes
+          const nextChild = node.children[index + 1];
+          if (child.type === "text" && nextChild?.type === "text") {
+            // Raw newlines are preserved inside the text nodes themselves, so no action here
+          }
+        }
+      });
+
+      if (isPlainText && rawValue.includes("|")) {
+        const lines = rawValue
+          .split(/\r?\n/)
+          .map((line) => line.trimEnd())
+          .filter((line, index, array) => {
+            if (!line.trim()) {
+              // Keep blank lines between rows so the parser can bail out gracefully
+              // but drop leading/trailing blanks that would invalidate the table structure
+              const isFirst = index === 0;
+              const isLast = index === array.length - 1;
+              return !(isFirst || isLast);
+            }
+            return true;
+          });
+
+        if (lines.length >= 2) {
+          const tableNode = buildTableNode(lines, node.position);
+
+          if (tableNode) {
+            nextChildren.push(tableNode);
+            return;
+          }
         }
       }
     }

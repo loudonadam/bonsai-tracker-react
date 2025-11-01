@@ -33,6 +33,7 @@ import { extractPhotoDate } from "../utils/photoMetadata";
 import { useSpecies } from "../context/SpeciesContext";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
+import markdownComponents from "../utils/markdownComponents";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
 
 // Try importing Recharts safely
@@ -1371,8 +1372,11 @@ const TreeDetail = () => {
               />
             </div>
           ) : hasNotes ? (
-            <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-              <ReactMarkdown remarkPlugins={[remarkSimpleGfmTables]}>
+            <div className="markdown-body prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
+              <ReactMarkdown
+                remarkPlugins={[remarkSimpleGfmTables]}
+                components={markdownComponents}
+              >
                 {tree.notes}
               </ReactMarkdown>
             </div>

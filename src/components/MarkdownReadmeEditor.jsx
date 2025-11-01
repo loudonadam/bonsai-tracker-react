@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
+import markdownComponents from "../utils/markdownComponents";
 
 const tabs = [
   { id: "write", label: "Write" },
@@ -101,8 +102,11 @@ const MarkdownReadmeEditor = ({
       ) : (
         <div className="px-3 py-3 text-sm" style={{ minHeight: `${rows * 1.25}rem` }}>
           {value.trim() ? (
-            <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-              <ReactMarkdown remarkPlugins={[remarkSimpleGfmTables]}>
+            <div className="markdown-body prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
+              <ReactMarkdown
+                remarkPlugins={[remarkSimpleGfmTables]}
+                components={markdownComponents}
+              >
                 {value}
               </ReactMarkdown>
             </div>

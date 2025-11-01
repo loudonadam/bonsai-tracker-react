@@ -78,3 +78,47 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+.markdown-body {
+  color: #374151;
+}
+
+.markdown-body .markdown-table-wrapper {
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px -20px rgba(15, 118, 110, 0.8);
+  background: #ffffff;
+}
+
+.markdown-body .markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.markdown-body .markdown-table-head {
+  background: #ecfdf3;
+}
+
+.markdown-body .markdown-table-header,
+.markdown-body .markdown-table-cell {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+
+.markdown-body .markdown-table-header {
+  font-weight: 600;
+  color: #065f46;
+}
+
+.markdown-body .markdown-table-body tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.markdown-body .markdown-table-body tr:hover {
+  background: #eef2ff;
+}

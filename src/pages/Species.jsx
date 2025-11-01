@@ -1,82 +1,21 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Edit, Plus, BookOpen, Trees, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Edit,
+  Plus,
+  BookOpen,
+  Trees,
+  X,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
+import markdownComponents from "../utils/markdownComponents";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
 import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 import { useSpecies } from "../context/SpeciesContext";
-
-// ─── ExpandableNote component ───────────────────────────────────
-// Displays a markdown block that collapses to `collapsedHeight` px
-// and animates to full height when expanded. Uses measured scrollHeight
-// to animate reliably (no Tailwind class trickery required).
-const ExpandableNote = ({ content, collapsedHeight = 200 }) => {
-  const contentRef = useRef(null);
-  const [expanded, setExpanded] = useState(false);
-  const [contentHeight, setContentHeight] = useState(0);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-
-    // measure content height after render
-    const measure = () => {
-      const h = el.scrollHeight;
-      setContentHeight(h);
-      setIsOverflowing(h > collapsedHeight + 8); // small slack
-    };
-
-    // measure immediately and also after images/fonts load (if any)
-    measure();
-
-    // listen for window resize in case layout changes
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [content, collapsedHeight]);
-
-  // compute inline style for animated maxHeight
-  const style = {
-    maxHeight: expanded ? `${contentHeight}px` : `${collapsedHeight}px`,
-    overflow: "hidden",
-    transition: "max-height 300ms ease",
-  };
-
-  return (
-    <div className="relative">
-      <div style={style} aria-expanded={expanded}>
-        <div ref={contentRef} className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
-          <ReactMarkdown remarkPlugins={[remarkSimpleGfmTables]}>
-            {content}
-          </ReactMarkdown>
-        </div>
-      </div>
-
-      {/* gradient fade when collapsed and overflowing */}
-      {!expanded && isOverflowing && (
-        <div
-          className="pointer-events-none absolute left-0 right-0 bottom-0 h-16"
-          style={{
-            background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,1) 80%)",
-          }}
-        />
-      )}
-
-      {/* Toggle */}
-      {isOverflowing && (
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={() => setExpanded((s) => !s)}
-            className="text-sm text-green-700 hover:text-green-800 font-medium focus:outline-none transition"
-          >
-            {expanded ? "Collapse ▲" : "Read More ▼"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ─── Species page ─────────────────────────────────────────────
 const Species = () => {
@@ -97,9 +36,11 @@ const Species = () => {
   const [newSpeciesData, setNewSpeciesData] = useState(initialAddForm);
   const [addSpeciesError, setAddSpeciesError] = useState("");
   const [isSavingNewSpecies, setIsSavingNewSpecies] = useState(false);
+  const [expandedSpeciesId, setExpandedSpeciesId] = useState(null);
 
   const handleEdit = (species) => {
     setEditingId(species.id);
+    setExpandedSpeciesId(species.id);
     setFormData({
       commonName: species.commonName,
       scientificName: species.scientificName,
@@ -118,6 +59,7 @@ const Species = () => {
 
   const handleCancel = () => {
     setEditingId(null);
+    setExpandedSpeciesId(null);
   };
 
   const openAddSpeciesForm = () => {
@@ -250,11 +192,14 @@ const Species = () => {
                 </div>
               </div>
             )}
-            {speciesList.map((species) => (
-              <div
-                key={species.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow transition"
-              >
+            {speciesList.map((species) => {
+              const isExpanded = expandedSpeciesId === species.id;
+
+              return (
+                <div
+                  key={species.id}
+                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow transition"
+                >
                 {editingId === species.id ? (
                   // Edit Mode
                   <div className="flex flex-col gap-3">
@@ -302,7 +247,7 @@ const Species = () => {
                 ) : (
                   // View Mode
                   <div className="flex flex-col h-full">
-                    <div className="flex justify-between items-start mb-3">
+                    <div className="flex justify-between items-start">
                       <div>
                         <h2 className="text-lg font-semibold text-gray-900">
                           {species.commonName}
@@ -312,27 +257,67 @@ const Species = () => {
                         </p>
                       </div>
                       <button
-                        onClick={() => handleEdit(species)}
-                        className="text-gray-400 hover:text-gray-600"
-                        title="Edit species"
+                        onClick={() =>
+                          setExpandedSpeciesId((current) =>
+                            current === species.id ? null : species.id
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
                       >
-                        <Edit className="w-4 h-4" />
+                        {isExpanded ? (
+                          <>
+                            Collapse
+                            <ChevronUp className="w-4 h-4" />
+                          </>
+                        ) : (
+                          <>
+                            Expand
+                            <ChevronDown className="w-4 h-4" />
+                          </>
+                        )}
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+                    <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
                       <Trees className="w-4 h-4 text-green-600" />
                       {species.treeCount} tree{species.treeCount !== 1 && "s"}
                     </div>
 
-                    <div className="border-t border-gray-200 pt-3 text-sm text-gray-700">
-                      {/* Expandable note (collapsible preview + full view) */}
-                      <ExpandableNote content={species.notes || "_No notes added yet._"} />
-                    </div>
+                    {isExpanded && (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => handleEdit(species)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Edit Species
+                          </button>
+                        </div>
+
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                          {species.notes?.trim() ? (
+                            <div className="markdown-body prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkSimpleGfmTables]}
+                                components={markdownComponents}
+                              >
+                                {species.notes}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <p className="italic text-gray-500">
+                              No notes added yet. Expand to add guidance with the Edit button above.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </div>
       </main>
