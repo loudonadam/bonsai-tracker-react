@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 import { useSpecies } from "../context/SpeciesContext";
 
@@ -30,6 +31,7 @@ const Species = () => {
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(null);
   const [deletingSpeciesId, setDeletingSpeciesId] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState({});
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, species: null });
 
   const selectedSpecies = useMemo(
     () =>
@@ -74,11 +76,7 @@ const Species = () => {
   };
 
   const handleDeleteSpecies = async (species) => {
-    const confirmed = window.confirm(
-      `Delete ${species.commonName || "this species"}? This action cannot be undone.`
-    );
-
-    if (!confirmed) {
+    if (!species) {
       return;
     }
 
@@ -93,6 +91,12 @@ const Species = () => {
       if (selectedSpeciesId === species.id) {
         setSelectedSpeciesId(null);
       }
+      setDeleteErrors((prev) => {
+        const next = { ...prev };
+        delete next[species.id];
+        return next;
+      });
+      setDeleteConfirm({ open: false, species: null });
     } catch (error) {
       setDeleteErrors((prev) => ({
         ...prev,
@@ -101,6 +105,27 @@ const Species = () => {
     } finally {
       setDeletingSpeciesId(null);
     }
+  };
+
+  const requestDeleteSpecies = (species) => {
+    if (!species) {
+      return;
+    }
+    setDeleteErrors((prev) => ({ ...prev, [species.id]: "" }));
+    setDeleteConfirm({ open: true, species });
+  };
+
+  const cancelDeleteSpecies = () => {
+    setDeleteConfirm((prev) => {
+      if (prev.species) {
+        setDeleteErrors((errors) => {
+          const next = { ...errors };
+          delete next[prev.species.id];
+          return next;
+        });
+      }
+      return { open: false, species: null };
+    });
   };
 
   const openAddSpeciesForm = () => {
@@ -201,41 +226,53 @@ const Species = () => {
                     {addSpeciesError}
                   </p>
                 )}
-                <input
-                  type="text"
-                  value={newSpeciesData.commonName}
-                  onChange={(event) =>
-                    setNewSpeciesData((prev) => ({
-                      ...prev,
-                      commonName: event.target.value,
-                    }))
-                  }
-                  placeholder="Common Name *"
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-                <input
-                  type="text"
-                  value={newSpeciesData.scientificName}
-                  onChange={(event) =>
-                    setNewSpeciesData((prev) => ({
-                      ...prev,
-                      scientificName: event.target.value,
-                    }))
-                  }
-                  placeholder="Scientific Name"
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
-                />
-                <MarkdownReadmeEditor
-                  value={newSpeciesData.notes}
-                  onChange={(value) =>
-                    setNewSpeciesData((prev) => ({
-                      ...prev,
-                      notes: value,
-                    }))
-                  }
-                  rows={10}
-                  placeholder="Document species care requirements using Markdown headings, lists, and tables."
-                />
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700">
+                    Common Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newSpeciesData.commonName}
+                    onChange={(event) =>
+                      setNewSpeciesData((prev) => ({
+                        ...prev,
+                        commonName: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g. Chinese Elm"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    aria-required="true"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700">Scientific Name</label>
+                  <input
+                    type="text"
+                    value={newSpeciesData.scientificName}
+                    onChange={(event) =>
+                      setNewSpeciesData((prev) => ({
+                        ...prev,
+                        scientificName: event.target.value,
+                      }))
+                    }
+                    placeholder="e.g. Ulmus parvifolia"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm italic"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700">Species Guide</label>
+                  <MarkdownReadmeEditor
+                    value={newSpeciesData.notes}
+                    onChange={(value) =>
+                      setNewSpeciesData((prev) => ({
+                        ...prev,
+                        notes: value,
+                      }))
+                    }
+                    rows={10}
+                    placeholder="Document species care requirements using Markdown headings, lists, and tables."
+                  />
+                </div>
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={cancelAddSpecies}
@@ -323,7 +360,7 @@ const Species = () => {
                 {editingId !== selectedSpecies.id && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleDeleteSpecies(selectedSpecies)}
+                      onClick={() => requestDeleteSpecies(selectedSpecies)}
                       disabled={deletingSpeciesId === selectedSpecies.id}
                       className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
                     >
@@ -435,6 +472,29 @@ const Species = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Delete species"
+        description={
+          deleteConfirm.species
+            ? `Are you sure you want to remove ${deleteConfirm.species.commonName || "this species"}? This action cannot be undone.`
+            : "Are you sure you want to remove this species? This action cannot be undone."
+        }
+        confirmLabel="Delete species"
+        cancelLabel="Keep species"
+        destructive
+        isLoading={
+          deleteConfirm.species &&
+          deletingSpeciesId === deleteConfirm.species.id
+        }
+        error={
+          deleteConfirm.species
+            ? deleteErrors[deleteConfirm.species.id]
+            : ""
+        }
+        onCancel={cancelDeleteSpecies}
+        onConfirm={() => handleDeleteSpecies(deleteConfirm.species)}
+      />
     </div>
   );
 };

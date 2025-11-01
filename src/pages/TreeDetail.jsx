@@ -140,6 +140,7 @@ const TreeDetail = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [newUpdate, setNewUpdate] = useState(initialUpdateState);
+  const [updateError, setUpdateError] = useState("");
   const [editingUpdateId, setEditingUpdateId] = useState(null);
   const [showGraveyardModal, setShowGraveyardModal] = useState(false);
   const [graveyardForm, setGraveyardForm] = useState({
@@ -1133,6 +1134,7 @@ const TreeDetail = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+    setUpdateError("");
   };
 
   const openAddUpdateModal = () => {
@@ -1154,6 +1156,7 @@ const TreeDetail = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+    setUpdateError("");
     setShowUpdateModal(true);
   };
 
@@ -1357,16 +1360,28 @@ const TreeDetail = () => {
   }, [newPhoto.preview]);
 
   const handleSaveUpdate = () => {
-    if (!newUpdate.date || !newUpdate.workPerformed.trim()) {
+    setUpdateError("");
+    const trimmedWork = newUpdate.workPerformed.trim();
+    const trimmedReminderMessage = newUpdate.reminderMessage.trim();
+
+    if (!newUpdate.date) {
+      setUpdateError("Please select a date for this update.");
+      return;
+    }
+
+    if (!trimmedWork) {
+      setUpdateError("Describe the work performed before saving the update.");
       return;
     }
 
     if (
       !editingUpdateId &&
       newUpdate.addReminder &&
-      (!newUpdate.reminderMessage.trim() || !newUpdate.reminderDueDate)
+      (!trimmedReminderMessage || !newUpdate.reminderDueDate)
     ) {
-      alert("Please provide a reminder message and due date.");
+      setUpdateError(
+        "Add a reminder message and due date to create the follow-up reminder."
+      );
       return;
     }
 
@@ -1374,7 +1389,6 @@ const TreeDetail = () => {
       newUpdate.girth.trim() !== "" && !Number.isNaN(Number(newUpdate.girth))
         ? Number(newUpdate.girth)
         : null;
-    const trimmedWork = newUpdate.workPerformed.trim();
 
     if (editingUpdateId) {
       setTree((prev) => ({
@@ -1422,7 +1436,7 @@ const TreeDetail = () => {
           id: Date.now(),
           treeId: tree.id,
           treeName: tree.name,
-          message: newUpdate.reminderMessage.trim(),
+          message: trimmedReminderMessage,
           dueDate: newUpdate.reminderDueDate,
         };
         const updatedReminders = appendReminderToStorage(reminder);
@@ -2131,7 +2145,9 @@ const TreeDetail = () => {
 
             <form className="space-y-5" onSubmit={handleMoveToGraveyard}>
               <div>
-                <span className="block text-sm font-medium text-gray-700 mb-2">Reason</span>
+                <span className="block text-sm font-medium text-gray-700 mb-2">
+                  Reason <span className="text-red-600">*</span>
+                </span>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label
                     className={`flex items-start gap-3 rounded-lg border px-3 py-3 text-sm transition ${
@@ -2249,13 +2265,20 @@ const TreeDetail = () => {
               {editingUpdateId ? 'Edit Tree Update' : 'Add Tree Update'}
             </h3>
 
+            {updateError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {updateError}
+              </p>
+            )}
+
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Date
+              Date <span className="text-red-600">*</span>
               <input
                 type="date"
                 value={newUpdate.date}
                 onChange={(e) => setNewUpdate((prev) => ({ ...prev, date: e.target.value }))}
                 className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                aria-required="true"
               />
             </label>
 
@@ -2273,12 +2296,13 @@ const TreeDetail = () => {
             </label>
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Work Performed
+              Work Performed <span className="text-red-600">*</span>
               <textarea
                 value={newUpdate.workPerformed}
                 onChange={(e) => setNewUpdate((prev) => ({ ...prev, workPerformed: e.target.value }))}
                 className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent min-h-[120px]"
                 placeholder="Describe the work that was completed"
+                aria-required="true"
               />
             </label>
 
@@ -2313,7 +2337,7 @@ const TreeDetail = () => {
                 {newUpdate.addReminder && (
                   <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
                     <label className="flex flex-col gap-1 text-sm text-gray-700">
-                      Reminder Message
+                      Reminder Message <span className="text-red-600">*</span>
                       <input
                         type="text"
                         value={newUpdate.reminderMessage}
@@ -2325,10 +2349,11 @@ const TreeDetail = () => {
                         }
                         className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
                         placeholder="e.g. Check wiring tension"
+                        aria-required="true"
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-sm text-gray-700">
-                      Reminder Due Date
+                      Reminder Due Date <span className="text-red-600">*</span>
                       <input
                         type="date"
                         value={newUpdate.reminderDueDate}
@@ -2339,6 +2364,7 @@ const TreeDetail = () => {
                           }))
                         }
                         className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                        aria-required="true"
                       />
                     </label>
                   </div>

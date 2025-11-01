@@ -1,9 +1,26 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Calendar, MessageSquare, Skull, Trash2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Calendar,
+  MessageSquare,
+  Skull,
+  Trash2,
+  RefreshCw,
+} from "lucide-react";
 import { useTrees } from "../context/TreesContext";
+import ConfirmDialog from "../components/ConfirmDialog";
 
-const GraveyardSection = ({ title, description, entries, onDelete, onRestore }) => {
+const GraveyardSection = ({
+  title,
+  description,
+  entries,
+  onRestore,
+  onRequestDelete,
+  pendingDeleteId,
+  deletingTreeId,
+}) => {
   if (entries.length === 0) {
     return (
       <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500">
@@ -80,19 +97,19 @@ const GraveyardSection = ({ title, description, entries, onDelete, onRestore }) 
                     Restore to collection
                   </button>
                   <button
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Permanently delete this tree? This cannot be undone."
-                        )
-                      ) {
-                        onDelete(entry.tree.id);
-                      }
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700"
+                    onClick={() => onRequestDelete?.(entry)}
+                    disabled={
+                      deletingTreeId === entry.tree.id ||
+                      pendingDeleteId === entry.tree.id
+                    }
+                    className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-400"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Delete forever
+                    {deletingTreeId === entry.tree.id
+                      ? "Deleting..."
+                      : pendingDeleteId === entry.tree.id
+                      ? "Confirming..."
+                      : "Delete forever"}
                   </button>
                 </div>
               </div>
@@ -107,9 +124,40 @@ const GraveyardSection = ({ title, description, entries, onDelete, onRestore }) 
 const Graveyard = () => {
   const navigate = useNavigate();
   const { graveyard, deleteTreePermanently, restoreTreeFromGraveyard } = useTrees();
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, entry: null });
+  const [deletingTreeId, setDeletingTreeId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
 
   const deadTrees = graveyard.filter((entry) => entry.category === "dead");
   const newOwnerTrees = graveyard.filter((entry) => entry.category === "new-owner");
+
+  const requestDeleteEntry = (entry) => {
+    setDeleteError("");
+    setDeleteConfirm({ open: true, entry });
+  };
+
+  const cancelDeleteEntry = () => {
+    setDeleteConfirm({ open: false, entry: null });
+    setDeleteError("");
+  };
+
+  const confirmDeleteEntry = async () => {
+    const entry = deleteConfirm.entry;
+    if (!entry) {
+      return;
+    }
+
+    setDeletingTreeId(entry.tree.id);
+    setDeleteError("");
+    try {
+      await deleteTreePermanently(entry.tree.id);
+      setDeleteConfirm({ open: false, entry: null });
+    } catch (error) {
+      setDeleteError(error.message || "Failed to delete tree. Please try again.");
+    } finally {
+      setDeletingTreeId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
@@ -142,8 +190,10 @@ const Graveyard = () => {
               title="Dead"
               description="Trees that have passed on will appear here with your notes on what happened."
               entries={deadTrees}
-              onDelete={deleteTreePermanently}
               onRestore={restoreTreeFromGraveyard}
+              onRequestDelete={requestDeleteEntry}
+              pendingDeleteId={deleteConfirm.entry?.tree.id ?? null}
+              deletingTreeId={deletingTreeId}
             />
           </div>
 
@@ -153,12 +203,33 @@ const Graveyard = () => {
               title="New Owner"
               description="Sold or gifted trees will live here with their final notes and sale details."
               entries={newOwnerTrees}
-              onDelete={deleteTreePermanently}
               onRestore={restoreTreeFromGraveyard}
+              onRequestDelete={requestDeleteEntry}
+              pendingDeleteId={deleteConfirm.entry?.tree.id ?? null}
+              deletingTreeId={deletingTreeId}
             />
           </div>
         </section>
       </div>
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Delete tree forever"
+        description={
+          deleteConfirm.entry
+            ? `This will permanently remove ${deleteConfirm.entry.tree.name} from your records. This action cannot be undone.`
+            : "This will permanently remove the selected tree from your records. This action cannot be undone."
+        }
+        confirmLabel="Delete forever"
+        cancelLabel="Keep tree"
+        destructive
+        isLoading={
+          deleteConfirm.entry &&
+          deletingTreeId === deleteConfirm.entry.tree.id
+        }
+        error={deleteError}
+        onCancel={cancelDeleteEntry}
+        onConfirm={confirmDeleteEntry}
+      />
     </div>
   );
 };
