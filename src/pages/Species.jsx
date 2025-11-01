@@ -253,68 +253,47 @@ const Species = () => {
                 </div>
               </div>
             )}
-            {speciesList.map((species) => {
-              const cleanedLines = species.notes?.trim()
-                ? species.notes
-                    .replace(/[#*_`>]/g, "")
-                    .replace(/-/g, "")
-                    .split("\n")
-                    .map((line) => line.trim())
-                    .filter((line) => line.length > 0)
-                : [];
-              const previewBase = cleanedLines[0] ||
-                (species.notes?.trim()
-                  ? "Click to read species guidance."
-                  : "Click to add species guidance.");
-              const previewText =
-                previewBase.length > 160
-                  ? `${previewBase.slice(0, 157)}...`
-                  : previewBase;
-
-              return (
-                <div
-                  key={species.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleOpenSpecies(species)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      handleOpenSpecies(species);
-                    }
-                  }}
-                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col justify-between hover:shadow transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <div className="flex justify-between items-start gap-4">
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900">
-                        {species.commonName}
-                      </h2>
-                      <p className="text-sm italic text-gray-600">
-                        {species.scientificName}
-                      </p>
-                    </div>
-                    <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                      View Details
-                    </span>
+            {speciesList.map((species) => (
+              <div
+                key={species.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleOpenSpecies(species)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleOpenSpecies(species);
+                  }
+                }}
+                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col gap-4 hover:shadow transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <div className="flex justify-between items-start gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      {species.commonName}
+                    </h2>
+                    <p className="text-sm italic text-gray-600">
+                      {species.scientificName}
+                    </p>
                   </div>
-
-                  <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
-                    <Trees className="w-4 h-4 text-green-600" />
-                    {species.treeCount} tree{species.treeCount !== 1 && "s"}
-                  </div>
-
-                  <p className="mt-4 text-sm text-gray-700">{previewText}</p>
+                  <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    View Details
+                  </span>
                 </div>
-              );
-            })}
+
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Trees className="w-4 h-4 text-green-600" />
+                  {species.treeCount} tree{species.treeCount !== 1 && "s"}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </main>
 
       {selectedSpecies && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50 px-4 py-6">
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="relative flex w-full max-w-4xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900">
@@ -363,7 +342,7 @@ const Species = () => {
               </div>
             </div>
 
-            <div className="overflow-y-auto px-6 py-6">
+            <div className="flex-1 overflow-y-auto px-6 py-6">
               {editingId === selectedSpecies.id ? (
                 <div className="flex flex-col gap-4">
                   <div className="grid gap-4 md:grid-cols-2">
