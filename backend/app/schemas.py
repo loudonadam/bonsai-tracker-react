@@ -137,6 +137,40 @@ class PhotoUpdate(BaseModel):
     is_primary: Optional[bool] = None
 
 
+class AccoladeBase(BaseModel):
+    title: str
+    photo_id: Optional[int] = Field(default=None, ge=1)
+
+
+class AccoladeCreate(AccoladeBase):
+    pass
+
+
+class AccoladeUpdate(BaseModel):
+    title: Optional[str] = None
+    photo_id: Optional[int] = Field(default=None, ge=1)
+
+
+class AccoladeOut(AccoladeBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    photo: Optional[PhotoOut] = None
+
+    @classmethod
+    def from_model(cls, accolade: models.Accolade) -> "AccoladeOut":
+        return cls(
+            id=accolade.id,
+            title=accolade.title,
+            photo_id=accolade.photo_id,
+            created_at=accolade.created_at,
+            updated_at=accolade.updated_at,
+            photo=PhotoOut.from_model(accolade.photo) if accolade.photo else None,
+        )
+
+
 class NotificationBase(BaseModel):
     title: str
     message: str
@@ -245,6 +279,7 @@ class BonsaiDetail(BonsaiSummary):
     updates: list[BonsaiUpdateOut] = Field(default_factory=list)
     measurements: list[MeasurementOut] = Field(default_factory=list)
     notifications: list[NotificationOut] = Field(default_factory=list)
+    accolades: list[AccoladeOut] = Field(default_factory=list)
 
     @classmethod
     def from_model(cls, bonsai: models.Bonsai) -> "BonsaiDetail":
@@ -260,4 +295,5 @@ class BonsaiDetail(BonsaiSummary):
                 NotificationOut.model_validate(notification)
                 for notification in bonsai.notifications
             ],
+            accolades=[AccoladeOut.from_model(accolade) for accolade in bonsai.accolades],
         )

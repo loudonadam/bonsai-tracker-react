@@ -20,6 +20,7 @@ def _load_bonsai(db: Session, bonsai_id: int) -> models.Bonsai:
             selectinload(models.Bonsai.updates),
             selectinload(models.Bonsai.notifications),
             selectinload(models.Bonsai.graveyard_entry),
+            selectinload(models.Bonsai.accolades).selectinload(models.Accolade.photo),
         )
         .filter(models.Bonsai.id == bonsai_id)
         .first()
@@ -40,6 +41,7 @@ def list_bonsai(db: Session = Depends(get_db)):
             selectinload(models.Bonsai.updates),
             selectinload(models.Bonsai.notifications),
             selectinload(models.Bonsai.graveyard_entry),
+            selectinload(models.Bonsai.accolades).selectinload(models.Accolade.photo),
         )
         .order_by(models.Bonsai.created_at.desc())
         .all()

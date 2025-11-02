@@ -76,6 +76,7 @@ const mockTreeData = {
     { id: 4, date: "2024-03-10", workPerformed: "First pruning of the season. Wired two main branches for movement.", girth: 14.5 }
   ],
   reminders: [],
+  accolades: [],
 };
 
 const initialUpdateState = {
@@ -122,6 +123,12 @@ const TreeDetail = () => {
     updateTree,
     updateTreePhoto,
     deleteTreePhoto,
+    createTreeMeasurement,
+    createTreeUpdate,
+    updateTreeUpdate,
+    createTreeAccolade,
+    updateTreeAccolade,
+    deleteTreeAccolade,
     loading: treesLoading,
   } = useTrees();
   const { species: speciesList, addSpecies, refreshSpecies } = useSpecies();
@@ -133,15 +140,22 @@ const TreeDetail = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
-  const [accolades, setAccolades] = useState([]);
+  const [accolades, setAccolades] = useState(
+    treeFromCollection?.accolades ?? mockTreeData.accolades ?? []
+  );
   const [showAccoladeModal, setShowAccoladeModal] = useState(false);
   const [newAccolade, setNewAccolade] = useState(initialAccoladeState);
-  const [editingAccoladeIndex, setEditingAccoladeIndex] = useState(null);
+  const [editingAccoladeId, setEditingAccoladeId] = useState(null);
+  const [accoladeError, setAccoladeError] = useState("");
+  const [isSavingAccolade, setIsSavingAccolade] = useState(false);
+  const [isRemovingAccoladeId, setIsRemovingAccoladeId] = useState(null);
+  const [accoladeActionError, setAccoladeActionError] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [newUpdate, setNewUpdate] = useState(initialUpdateState);
   const [updateError, setUpdateError] = useState("");
   const [editingUpdateId, setEditingUpdateId] = useState(null);
+  const [isSavingUpdate, setIsSavingUpdate] = useState(false);
   const [showGraveyardModal, setShowGraveyardModal] = useState(false);
   const [graveyardForm, setGraveyardForm] = useState({
     category: "dead",
@@ -377,6 +391,7 @@ const TreeDetail = () => {
         ...prev,
         ...treeFromCollection,
       }));
+      setAccolades(treeFromCollection.accolades ?? []);
       setDetailLoading(false);
       setDetailError("");
     }
@@ -400,6 +415,7 @@ const TreeDetail = () => {
           ...prev,
           ...fetched,
         }));
+        setAccolades(fetched.accolades ?? []);
       })
       .catch((error) => {
         if (!isActive) {
@@ -431,15 +447,26 @@ const TreeDetail = () => {
     }
 
     if (newAccolade.photoId) {
-      return (
-        tree.photos.find(
-          (photo) => String(photo.id) === String(newAccolade.photoId)
-        ) || null
+      const linked = tree.photos.find(
+        (photo) => String(photo.id) === String(newAccolade.photoId)
       );
+      if (linked) {
+        return linked;
+      }
+      const existing = accolades.find(
+        (item) => String(item.id) === String(editingAccoladeId)
+      );
+      return existing?.photo ?? null;
     }
 
     return null;
-  }, [newAccolade.photoId, newAccolade.uploadPreview, tree.photos]);
+  }, [
+    newAccolade.photoId,
+    newAccolade.uploadPreview,
+    tree.photos,
+    accolades,
+    editingAccoladeId,
+  ]);
 
   useEffect(() => {
     if (!isStageMenuOpen) return;
@@ -1019,50 +1046,58 @@ const TreeDetail = () => {
   };
 
   const handleAccoladePreview = (accolade, linkedPhoto) => {
-    const source = accolade.uploadedPhoto
-      ? { url: accolade.uploadedPhoto }
-      : linkedPhoto;
+    const source = linkedPhoto ?? accolade.photo ?? null;
 
-    if (!source || !source.url) {
+    if (!source) {
+      return;
+    }
+
+    const displayUrl = source.fullUrl || source.url;
+    if (!displayUrl) {
       return;
     }
 
     const subtitleParts = [];
-    if (linkedPhoto?.date) {
-      subtitleParts.push(formatDate(linkedPhoto.date));
+    const dateValue = source.takenAt ?? source.date;
+    if (dateValue) {
+      subtitleParts.push(formatDate(dateValue));
     }
-    if (linkedPhoto?.description) {
-      subtitleParts.push(linkedPhoto.description);
+    if (source.description) {
+      subtitleParts.push(source.description);
     }
 
-    openPhotoViewer(source, {
-      title: accolade.title,
-      subtitle: subtitleParts.join(" • ") || undefined,
-      description: accolade.uploadedPhoto
-        ? "Uploaded accolade photo"
-        : undefined,
-    });
+    openPhotoViewer(
+      {
+        url: displayUrl,
+        description: source.description,
+      },
+      {
+        title: accolade.title,
+        subtitle: subtitleParts.join(" • ") || undefined,
+      }
+    );
   };
 
-  const openAccoladeModal = (index = null) => {
-    if (typeof index === "number" && accolades[index]) {
-      const accolade = accolades[index];
+  const openAccoladeModal = (accolade = null) => {
+    if (accolade) {
       setNewAccolade({
         title: accolade.title,
         photoId: accolade.photoId ? String(accolade.photoId) : "",
-        uploadPreview: accolade.uploadedPhoto || "",
+        uploadPreview: "",
         uploadFile: null,
       });
-      setEditingAccoladeIndex(index);
+      setEditingAccoladeId(accolade.id);
     } else {
       setNewAccolade(initialAccoladeState);
-      setEditingAccoladeIndex(null);
+      setEditingAccoladeId(null);
     }
 
     if (accoladeFileInputRef.current) {
       accoladeFileInputRef.current.value = "";
     }
 
+    setAccoladeError("");
+    setAccoladeActionError("");
     setShowAccoladeModal(true);
   };
 
@@ -1083,6 +1118,7 @@ const TreeDetail = () => {
       }));
     };
     reader.readAsDataURL(file);
+    setAccoladeError("");
   };
 
   const clearAccoladePhoto = () => {
@@ -1095,37 +1131,86 @@ const TreeDetail = () => {
     if (accoladeFileInputRef.current) {
       accoladeFileInputRef.current.value = "";
     }
+    setAccoladeError("");
   };
 
-  const handleAccoladeSave = () => {
-    if (!newAccolade.title.trim()) {
+  const handleAccoladeSave = async () => {
+    if (!tree?.id || isSavingAccolade) {
       return;
     }
 
-    const entry = {
-      title: newAccolade.title.trim(),
-      photoId: newAccolade.photoId ? String(newAccolade.photoId) : null,
-      uploadedPhoto: newAccolade.uploadPreview || null,
-    };
-
-    if (editingAccoladeIndex !== null) {
-      setAccolades((prev) =>
-        prev.map((item, idx) => (idx === editingAccoladeIndex ? entry : item))
-      );
-    } else {
-      setAccolades((prev) => [...prev, entry]);
+    const trimmedTitle = newAccolade.title.trim();
+    if (!trimmedTitle) {
+      setAccoladeError("Please provide a title for this accolade.");
+      return;
     }
 
-    setNewAccolade(initialAccoladeState);
-    setEditingAccoladeIndex(null);
-    if (accoladeFileInputRef.current) {
-      accoladeFileInputRef.current.value = "";
+    setIsSavingAccolade(true);
+    setAccoladeError("");
+
+    try {
+      let selectedPhotoId = newAccolade.photoId
+        ? Number(newAccolade.photoId)
+        : null;
+
+      if (newAccolade.uploadFile) {
+        const uploaded = await uploadTreePhoto(tree.id, {
+          file: newAccolade.uploadFile,
+          description: `Accolade photo – ${trimmedTitle}`,
+        });
+        selectedPhotoId = uploaded.id;
+      }
+
+      if (editingAccoladeId) {
+        await updateTreeAccolade(tree.id, editingAccoladeId, {
+          title: trimmedTitle,
+          photo_id: selectedPhotoId ?? null,
+        });
+      } else {
+        await createTreeAccolade(tree.id, {
+          title: trimmedTitle,
+          ...(selectedPhotoId ? { photo_id: selectedPhotoId } : {}),
+        });
+      }
+
+      const refreshed = await fetchTreeById(tree.id);
+      setTree(refreshed);
+      setAccolades(refreshed.accolades ?? []);
+      setAccoladeActionError("");
+
+      setNewAccolade(initialAccoladeState);
+      setEditingAccoladeId(null);
+      setShowAccoladeModal(false);
+      if (accoladeFileInputRef.current) {
+        accoladeFileInputRef.current.value = "";
+      }
+    } catch (error) {
+      setAccoladeError(error.message || "Unable to save this accolade.");
+    } finally {
+      setIsSavingAccolade(false);
     }
-    setShowAccoladeModal(false);
   };
 
-  const handleRemoveAccolade = (index) => {
-    setAccolades((prev) => prev.filter((_, idx) => idx !== index));
+  const handleRemoveAccolade = async (accoladeId) => {
+    if (!tree?.id || isRemovingAccoladeId === accoladeId) {
+      return;
+    }
+
+    setIsRemovingAccoladeId(accoladeId);
+    setAccoladeActionError("");
+
+    try {
+      await deleteTreeAccolade(tree.id, accoladeId);
+      const refreshed = await fetchTreeById(tree.id);
+      setTree(refreshed);
+      setAccolades(refreshed.accolades ?? []);
+    } catch (error) {
+      setAccoladeActionError(
+        error.message || "Unable to remove this accolade right now."
+      );
+    } finally {
+      setIsRemovingAccoladeId(null);
+    }
   };
 
   const resetUpdateForm = () => {
@@ -1359,7 +1444,11 @@ const TreeDetail = () => {
     };
   }, [newPhoto.preview]);
 
-  const handleSaveUpdate = () => {
+  const handleSaveUpdate = async () => {
+    if (!tree?.id || isSavingUpdate) {
+      return;
+    }
+
     setUpdateError("");
     const trimmedWork = newUpdate.workPerformed.trim();
     const trimmedReminderMessage = newUpdate.reminderMessage.trim();
@@ -1390,62 +1479,65 @@ const TreeDetail = () => {
         ? Number(newUpdate.girth)
         : null;
 
-    if (editingUpdateId) {
-      setTree((prev) => ({
-        ...prev,
-        updates: prev.updates.map((update) => {
-          if (update.id !== editingUpdateId) {
-            return update;
-          }
+    const performedAt = `${newUpdate.date}T00:00:00`;
 
-          return {
-            ...update,
-            date: newUpdate.date,
-            girth:
-              parsedGirth !== null
-                ? parsedGirth
-                : update.girth,
-            workPerformed: trimmedWork,
+    setIsSavingUpdate(true);
+
+    try {
+      if (editingUpdateId) {
+        await updateTreeUpdate(tree.id, editingUpdateId, {
+          title: trimmedWork,
+          description: trimmedWork,
+          performed_at: performedAt,
+        });
+      } else {
+        const createdUpdate = await createTreeUpdate(tree.id, {
+          title: trimmedWork,
+          description: trimmedWork,
+          performed_at: performedAt,
+        });
+
+        if (parsedGirth !== null) {
+          await createTreeMeasurement(tree.id, {
+            measured_at: performedAt,
+            trunk_diameter_cm: parsedGirth,
+          });
+        }
+
+        if (newUpdate.photoFile) {
+          const photoPayload = {
+            file: newUpdate.photoFile,
+            description: `Update photo – ${trimmedWork}`,
+            takenAt: newUpdate.date,
+            updateId: createdUpdate.id,
           };
-        }),
-      }));
-    } else {
-      setTree((prev) => {
-        const fallbackGirth =
-          parsedGirth !== null
-            ? parsedGirth
-            : typeof prev.updates[0]?.girth === "number"
-            ? prev.updates[0].girth
-            : prev.currentGirth;
+          await uploadTreePhoto(tree.id, photoPayload);
+        }
 
-        const entry = {
-          id: Date.now(),
-          date: newUpdate.date,
-          girth: fallbackGirth,
-          workPerformed: trimmedWork,
-        };
-
-        return {
-          ...prev,
-          updates: [entry, ...prev.updates],
-        };
-      });
-
-      if (newUpdate.addReminder) {
-        const reminder = {
-          id: Date.now(),
-          treeId: tree.id,
-          treeName: tree.name,
-          message: trimmedReminderMessage,
-          dueDate: newUpdate.reminderDueDate,
-        };
-        const updatedReminders = appendReminderToStorage(reminder);
-        setReminders(updatedReminders);
+        if (newUpdate.addReminder) {
+          const reminder = {
+            id: Date.now(),
+            treeId: tree.id,
+            treeName: tree.name,
+            message: trimmedReminderMessage,
+            dueDate: newUpdate.reminderDueDate,
+          };
+          const updatedReminders = appendReminderToStorage(reminder);
+          setReminders(updatedReminders);
+        }
       }
-    }
 
-    resetUpdateForm();
-    setShowUpdateModal(false);
+      const refreshed = await fetchTreeById(tree.id);
+      setTree(refreshed);
+      setAccolades(refreshed.accolades ?? []);
+
+      resetUpdateForm();
+      setShowUpdateModal(false);
+    } catch (error) {
+      setUpdateError(error.message || "Unable to save this update.");
+    } finally {
+      setIsSavingUpdate(false);
+    }
   };
 
   // ─── Tabs ────────────────────────────────────────────────
@@ -2029,22 +2121,29 @@ const TreeDetail = () => {
               </button>
             </div>
 
+            {accoladeActionError && (
+              <p className="mb-3 text-sm text-red-600">{accoladeActionError}</p>
+            )}
             {accolades.length > 0 ? (
               <ul className="space-y-3 text-sm text-gray-700">
-                {accolades.map((accolade, idx) => {
+                {accolades.map((accolade) => {
                   const linkedPhoto = accolade.photoId
                     ? tree.photos.find((photo) => String(photo.id) === String(accolade.photoId))
                     : null;
-                  const hasUploadedPhoto = Boolean(accolade.uploadedPhoto);
-                  const displayPhoto = hasUploadedPhoto
-                    ? { url: accolade.uploadedPhoto }
-                    : linkedPhoto;
-
-                  const canPreview = Boolean(displayPhoto?.url);
+                  const displayPhoto = linkedPhoto ?? accolade.photo ?? null;
+                  const canPreview = Boolean(displayPhoto?.url || displayPhoto?.fullUrl);
+                  const subtitleParts = [];
+                  const photoDate = displayPhoto?.date ?? displayPhoto?.takenAt ?? null;
+                  if (photoDate) {
+                    subtitleParts.push(formatDate(photoDate));
+                  }
+                  if (displayPhoto?.description) {
+                    subtitleParts.push(displayPhoto.description);
+                  }
 
                   return (
                     <li
-                      key={idx}
+                      key={accolade.id}
                       className={`flex items-center gap-3 rounded-md border px-3 py-2 transition ${
                         canPreview
                           ? "border-gray-200 bg-gray-50 hover:border-green-200 hover:bg-white cursor-pointer"
@@ -2058,19 +2157,11 @@ const TreeDetail = () => {
                     >
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
                         {displayPhoto ? (
-                          displayPhoto.url ? (
-                            <img
-                              src={displayPhoto.url}
-                              alt={
-                                hasUploadedPhoto
-                                  ? 'Accolade photo'
-                                  : linkedPhoto?.description || 'Linked accolade photo'
-                              }
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <Camera className="h-6 w-6 text-gray-400" />
-                          )
+                          <img
+                            src={displayPhoto.thumbnailUrl || displayPhoto.url || displayPhoto.fullUrl}
+                            alt={displayPhoto.description || 'Accolade photo'}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <Camera className="h-6 w-6 text-gray-300" />
                         )}
@@ -2078,12 +2169,8 @@ const TreeDetail = () => {
                       <div className="flex-1">
                         <p className="font-medium text-gray-800">{accolade.title}</p>
                         <p className="text-xs text-gray-500">
-                          {hasUploadedPhoto
-                            ? 'Uploaded photo attached'
-                            : linkedPhoto
-                            ? `${formatDate(linkedPhoto.date)}${
-                                linkedPhoto.description ? ` • ${linkedPhoto.description}` : ''
-                              }`
+                          {subtitleParts.length > 0
+                            ? subtitleParts.join(' • ')
                             : 'No photo attached'}
                         </p>
                       </div>
@@ -2092,7 +2179,7 @@ const TreeDetail = () => {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            openAccoladeModal(idx);
+                            openAccoladeModal(accolade);
                           }}
                           className="text-gray-400 transition hover:text-green-600"
                           aria-label="Edit accolade"
@@ -2103,10 +2190,11 @@ const TreeDetail = () => {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleRemoveAccolade(idx);
+                            handleRemoveAccolade(accolade.id);
                           }}
-                          className="text-gray-400 transition hover:text-red-600"
+                          className="text-gray-400 transition hover:text-red-600 disabled:opacity-50"
                           aria-label="Delete accolade"
+                          disabled={isRemovingAccoladeId === accolade.id}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2409,9 +2497,14 @@ const TreeDetail = () => {
               </button>
               <button
                 onClick={handleSaveUpdate}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition disabled:cursor-not-allowed disabled:bg-green-300"
+                disabled={isSavingUpdate}
               >
-                {editingUpdateId ? 'Save Changes' : 'Save Update'}
+                {isSavingUpdate
+                  ? 'Saving…'
+                  : editingUpdateId
+                  ? 'Save Changes'
+                  : 'Save Update'}
               </button>
             </div>
           </div>
@@ -2685,7 +2778,8 @@ const TreeDetail = () => {
               onClick={() => {
                 setShowAccoladeModal(false);
                 setNewAccolade(initialAccoladeState);
-                setEditingAccoladeIndex(null);
+                setEditingAccoladeId(null);
+                setAccoladeError("");
                 if (accoladeFileInputRef.current) {
                   accoladeFileInputRef.current.value = "";
                 }
@@ -2695,8 +2789,14 @@ const TreeDetail = () => {
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-lg font-semibold text-gray-800">
-              {editingAccoladeIndex !== null ? 'Edit Accolade' : 'Add Accolade'}
+              {editingAccoladeId ? 'Edit Accolade' : 'Add Accolade'}
             </h3>
+
+            {accoladeError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {accoladeError}
+              </p>
+            )}
 
             <div className="space-y-4">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -2794,7 +2894,8 @@ const TreeDetail = () => {
                 onClick={() => {
                   setShowAccoladeModal(false);
                   setNewAccolade(initialAccoladeState);
-                  setEditingAccoladeIndex(null);
+                  setEditingAccoladeId(null);
+                  setAccoladeError("");
                   if (accoladeFileInputRef.current) {
                     accoladeFileInputRef.current.value = "";
                   }
@@ -2806,9 +2907,13 @@ const TreeDetail = () => {
               <button
                 onClick={handleAccoladeSave}
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition disabled:cursor-not-allowed disabled:bg-green-300"
-                disabled={!newAccolade.title.trim()}
+                disabled={isSavingAccolade}
               >
-                {editingAccoladeIndex !== null ? 'Save Changes' : 'Add Accolade'}
+                {isSavingAccolade
+                  ? 'Saving…'
+                  : editingAccoladeId
+                  ? 'Save Changes'
+                  : 'Add Accolade'}
               </button>
             </div>
           </div>

@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -71,6 +80,12 @@ class Bonsai(Base):
         back_populates="bonsai",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    accolades: Mapped[list["Accolade"]] = relationship(
+        "Accolade",
+        back_populates="bonsai",
+        cascade="all, delete-orphan",
+        order_by="Accolade.created_at.desc()",
     )
 
 
@@ -158,3 +173,23 @@ class GraveyardEntry(Base):
     moved_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     bonsai: Mapped[Bonsai] = relationship("Bonsai", back_populates="graveyard_entry")
+
+
+class Accolade(Base):
+    __tablename__ = "accolades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bonsai_id: Mapped[int] = mapped_column(Integer, ForeignKey("bonsai.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    photo_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("photos.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    bonsai: Mapped[Bonsai] = relationship("Bonsai", back_populates="accolades")
+    photo: Mapped[Optional[Photo]] = relationship("Photo")

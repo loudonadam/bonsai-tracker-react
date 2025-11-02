@@ -100,6 +100,20 @@ const mapNotification = (entry) => ({
   createdAt: entry.created_at,
 });
 
+const mapAccolade = (entry) => {
+  const mappedPhoto = entry.photo ? mapPhoto(entry.photo) : null;
+
+  return {
+    id: entry.id,
+    title: entry.title ?? "",
+    photoId:
+      entry.photo_id ?? entry.photoId ?? mappedPhoto?.id ?? null,
+    photo: mappedPhoto,
+    createdAt: entry.created_at ?? entry.createdAt ?? null,
+    updatedAt: entry.updated_at ?? entry.updatedAt ?? null,
+  };
+};
+
 const mapGraveyardEntry = (entry) => {
   if (!entry) {
     return null;
@@ -156,6 +170,9 @@ const mapBonsai = (entry) => {
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
     graveyardEntry: mapGraveyardEntry(entry.graveyard_entry ?? entry.graveyardEntry),
+    accolades: Array.isArray(entry.accolades)
+      ? entry.accolades.map(mapAccolade)
+      : [],
   };
 };
 
@@ -346,6 +363,9 @@ export const TreesProvider = ({ children }) => {
     if (data.isPrimary) {
       formData.append("is_primary", "true");
     }
+    if (data.updateId) {
+      formData.append("update_id", String(data.updateId));
+    }
 
     const photo = await apiClient.postForm(`/bonsai/${treeId}/photos`, formData);
     const mappedPhoto = mapPhoto(photo);
@@ -371,6 +391,138 @@ export const TreesProvider = ({ children }) => {
 
     return mappedPhoto;
   }, [updateTreeReferences]);
+
+  const createTreeMeasurement = useCallback(
+    async (treeId, data) => {
+      const response = await apiClient.post(`/bonsai/${treeId}/measurements`, data);
+      const mapped = mapMeasurement(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.measurements) ? tree.measurements : [];
+        return {
+          ...tree,
+          measurements: [mapped, ...existing],
+        };
+      });
+
+      return mapped;
+    },
+    [updateTreeReferences]
+  );
+
+  const createTreeUpdate = useCallback(
+    async (treeId, data) => {
+      const response = await apiClient.post(`/bonsai/${treeId}/updates`, data);
+      const mapped = mapUpdate(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.updates) ? tree.updates : [];
+        return {
+          ...tree,
+          updates: [mapped, ...existing],
+        };
+      });
+
+      return mapped;
+    },
+    [updateTreeReferences]
+  );
+
+  const updateTreeUpdate = useCallback(
+    async (treeId, updateId, data) => {
+      const response = await apiClient.patch(
+        `/bonsai/${treeId}/updates/${updateId}`,
+        data
+      );
+      const mapped = mapUpdate(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.updates) ? tree.updates : [];
+        return {
+          ...tree,
+          updates: existing.map((update) =>
+            Number(update.id) === Number(updateId) ? mapped : update
+          ),
+        };
+      });
+
+      return mapped;
+    },
+    [updateTreeReferences]
+  );
+
+  const deleteTreeUpdate = useCallback(
+    async (treeId, updateId) => {
+      await apiClient.delete(`/bonsai/${treeId}/updates/${updateId}`);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.updates) ? tree.updates : [];
+        return {
+          ...tree,
+          updates: existing.filter((update) => Number(update.id) !== Number(updateId)),
+        };
+      });
+    },
+    [updateTreeReferences]
+  );
+
+  const createTreeAccolade = useCallback(
+    async (treeId, data) => {
+      const response = await apiClient.post(`/bonsai/${treeId}/accolades`, data);
+      const mapped = mapAccolade(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.accolades) ? tree.accolades : [];
+        return {
+          ...tree,
+          accolades: [mapped, ...existing],
+        };
+      });
+
+      return mapped;
+    },
+    [updateTreeReferences]
+  );
+
+  const updateTreeAccolade = useCallback(
+    async (treeId, accoladeId, data) => {
+      const response = await apiClient.patch(
+        `/bonsai/${treeId}/accolades/${accoladeId}`,
+        data
+      );
+      const mapped = mapAccolade(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.accolades) ? tree.accolades : [];
+        return {
+          ...tree,
+          accolades: existing.map((accolade) =>
+            Number(accolade.id) === Number(accoladeId) ? mapped : accolade
+          ),
+        };
+      });
+
+      return mapped;
+    },
+    [updateTreeReferences]
+  );
+
+  const deleteTreeAccolade = useCallback(
+    async (treeId, accoladeId) => {
+      await apiClient.delete(`/bonsai/${treeId}/accolades/${accoladeId}`);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.accolades) ? tree.accolades : [];
+        return {
+          ...tree,
+          accolades: existing.filter(
+            (accolade) => Number(accolade.id) !== Number(accoladeId)
+          ),
+        };
+      });
+    },
+    [updateTreeReferences]
+  );
 
   const deleteTreePhoto = useCallback(
     async (treeId, photoId) => {
@@ -522,6 +674,13 @@ export const TreesProvider = ({ children }) => {
       uploadTreePhoto,
       updateTreePhoto,
       deleteTreePhoto,
+      createTreeMeasurement,
+      createTreeUpdate,
+      updateTreeUpdate,
+      deleteTreeUpdate,
+      createTreeAccolade,
+      updateTreeAccolade,
+      deleteTreeAccolade,
     }),
     [
       trees,
@@ -539,6 +698,13 @@ export const TreesProvider = ({ children }) => {
       uploadTreePhoto,
       updateTreePhoto,
       deleteTreePhoto,
+      createTreeMeasurement,
+      createTreeUpdate,
+      updateTreeUpdate,
+      deleteTreeUpdate,
+      createTreeAccolade,
+      updateTreeAccolade,
+      deleteTreeAccolade,
     ]
   );
 
