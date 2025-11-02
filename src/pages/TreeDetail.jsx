@@ -18,6 +18,8 @@ import {
   Skull,
   AlertTriangle,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
 } from "lucide-react";
 import {
   appendReminderToStorage,
@@ -126,6 +128,7 @@ const TreeDetail = () => {
     createTreeMeasurement,
     createTreeUpdate,
     updateTreeUpdate,
+    deleteTreeUpdate,
     createTreeAccolade,
     updateTreeAccolade,
     deleteTreeAccolade,
@@ -156,6 +159,8 @@ const TreeDetail = () => {
   const [updateError, setUpdateError] = useState("");
   const [editingUpdateId, setEditingUpdateId] = useState(null);
   const [isSavingUpdate, setIsSavingUpdate] = useState(false);
+  const [updateActionError, setUpdateActionError] = useState("");
+  const [isDeletingUpdateId, setIsDeletingUpdateId] = useState(null);
   const [notesError, setNotesError] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [showGraveyardModal, setShowGraveyardModal] = useState(false);
@@ -192,7 +197,11 @@ const TreeDetail = () => {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [showEditPhotoModal, setShowEditPhotoModal] = useState(false);
   const [photoBeingEdited, setPhotoBeingEdited] = useState(null);
-  const [photoEditData, setPhotoEditData] = useState({ takenAt: "", description: "" });
+  const [photoEditData, setPhotoEditData] = useState({
+    takenAt: "",
+    description: "",
+    rotationDegrees: 0,
+  });
   const [photoEditError, setPhotoEditError] = useState("");
   const [isSavingPhotoEdit, setIsSavingPhotoEdit] = useState(false);
   const [photoActionError, setPhotoActionError] = useState("");
@@ -882,7 +891,7 @@ const TreeDetail = () => {
 
   const resetPhotoEditState = () => {
     setPhotoBeingEdited(null);
-    setPhotoEditData({ takenAt: "", description: "" });
+    setPhotoEditData({ takenAt: "", description: "", rotationDegrees: 0 });
     setPhotoEditError("");
     setIsSavingPhotoEdit(false);
   };
@@ -897,6 +906,7 @@ const TreeDetail = () => {
     setPhotoEditData({
       takenAt: formatInputDate(photo.takenAt ?? photo.date ?? ""),
       description: photo.description ?? "",
+      rotationDegrees: 0,
     });
     setPhotoActionError("");
     setShowEditPhotoModal(true);
@@ -905,6 +915,20 @@ const TreeDetail = () => {
   const closeEditPhotoModal = () => {
     setShowEditPhotoModal(false);
     resetPhotoEditState();
+  };
+
+  const rotatePhotoLeft = () => {
+    setPhotoEditData((prev) => ({
+      ...prev,
+      rotationDegrees: (prev.rotationDegrees + 270) % 360,
+    }));
+  };
+
+  const rotatePhotoRight = () => {
+    setPhotoEditData((prev) => ({
+      ...prev,
+      rotationDegrees: (prev.rotationDegrees + 90) % 360,
+    }));
   };
 
   const handleSavePhotoEdit = async () => {
@@ -923,6 +947,10 @@ const TreeDetail = () => {
         payload.taken_at = photoEditData.takenAt;
       } else {
         payload.taken_at = null;
+      }
+
+      if (photoEditData.rotationDegrees % 360 !== 0) {
+        payload.rotate_degrees = photoEditData.rotationDegrees;
       }
 
       const updatedPhoto = await updateTreePhoto(
@@ -1235,6 +1263,7 @@ const TreeDetail = () => {
 
   const openAddUpdateModal = () => {
     resetUpdateForm();
+    setUpdateActionError("");
     setShowUpdateModal(true);
   };
 
@@ -1253,6 +1282,7 @@ const TreeDetail = () => {
       fileInputRef.current.value = "";
     }
     setUpdateError("");
+    setUpdateActionError("");
     setShowUpdateModal(true);
   };
 
@@ -1541,6 +1571,7 @@ const TreeDetail = () => {
       const refreshed = await fetchTreeById(tree.id);
       setTree(refreshed);
       setAccolades(refreshed.accolades ?? []);
+      setUpdateActionError("");
 
       resetUpdateForm();
       setShowUpdateModal(false);
@@ -1548,6 +1579,28 @@ const TreeDetail = () => {
       setUpdateError(error.message || "Unable to save this update.");
     } finally {
       setIsSavingUpdate(false);
+    }
+  };
+
+  const handleDeleteUpdate = async (updateId) => {
+    if (!tree?.id || isDeletingUpdateId === updateId) {
+      return;
+    }
+
+    setIsDeletingUpdateId(updateId);
+    setUpdateActionError("");
+
+    try {
+      await deleteTreeUpdate(tree.id, updateId);
+      const refreshed = await fetchTreeById(tree.id);
+      setTree(refreshed);
+      setAccolades(refreshed.accolades ?? []);
+    } catch (error) {
+      setUpdateActionError(
+        error.message || "Unable to delete this update right now."
+      );
+    } finally {
+      setIsDeletingUpdateId(null);
     }
   };
 
@@ -1846,32 +1899,61 @@ const TreeDetail = () => {
         Add New Update
       </button>
 
+      {updateActionError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {updateActionError}
+        </p>
+      )}
+
       <div className="space-y-4">
-        {tree.updates.map((update) => (
-          <div key={update.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow transition">
-            <div className="flex items-start justify-between mb-2">
-              <div className="text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {formatDate(update.date)}
-                </div>
-                {typeof update.girth === 'number' && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <Ruler className="w-4 h-4" />
-                    <span>{update.girth} cm width</span>
+        {tree.updates.length === 0 ? (
+          <p className="text-sm text-gray-500 italic text-center">
+            No updates yet. Add one to start tracking this tree.
+          </p>
+        ) : (
+          tree.updates.map((update) => (
+            <div key={update.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow transition">
+              <div className="flex items-start justify-between mb-2">
+                <div className="text-sm text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {formatDate(update.date)}
                   </div>
-                )}
+                  {typeof update.girth === "number" && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Ruler className="w-4 h-4" />
+                      <span>{update.girth} cm width</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEditUpdateModal(update)}
+                    className="text-gray-400 hover:text-gray-600"
+                    aria-label="Edit tree update"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUpdate(update.id)}
+                    className="text-gray-400 transition hover:text-red-600 disabled:opacity-50"
+                    aria-label="Delete tree update"
+                    disabled={isDeletingUpdateId === update.id}
+                  >
+                    {isDeletingUpdateId === update.id ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => openEditUpdateModal(update)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <Edit className="w-4 h-4" />
-              </button>
+              <p className="text-gray-700">{update.workPerformed}</p>
             </div>
-            <p className="text-gray-700">{update.workPerformed}</p>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -2678,8 +2760,30 @@ const TreeDetail = () => {
                 <img
                   src={photoBeingEdited.fullUrl || photoBeingEdited.url}
                   alt={photoBeingEdited.description || 'Tree photo'}
-                  className="h-48 w-full object-cover"
+                  className="h-48 w-full object-cover transition-transform duration-300"
+                  style={{ transform: `rotate(${photoEditData.rotationDegrees}deg)` }}
                 />
+              </div>
+            )}
+
+            {photoBeingEdited?.url && (
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={rotatePhotoLeft}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Rotate left
+                </button>
+                <button
+                  type="button"
+                  onClick={rotatePhotoRight}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                >
+                  <RotateCw className="h-4 w-4" />
+                  Rotate right
+                </button>
               </div>
             )}
 

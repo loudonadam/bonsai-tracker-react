@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import settings
 from . import models
@@ -135,6 +135,17 @@ class PhotoUpdate(BaseModel):
     description: Optional[str] = None
     taken_at: Optional[datetime] = None
     is_primary: Optional[bool] = None
+    rotate_degrees: Optional[int] = Field(default=None)
+
+    @field_validator("rotate_degrees")
+    @classmethod
+    def validate_rotation(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return None
+        if value % 90 != 0:
+            msg = "Rotation must be provided in 90 degree increments."
+            raise ValueError(msg)
+        return value
 
 
 class AccoladeBase(BaseModel):

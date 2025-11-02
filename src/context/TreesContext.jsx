@@ -608,7 +608,23 @@ export const TreesProvider = ({ children }) => {
         `/bonsai/${treeId}/photos/${photoId}`,
         data
       );
-      const mappedPhoto = mapPhoto(response);
+      let mappedPhoto = mapPhoto(response);
+
+      if (
+        data &&
+        typeof data.rotate_degrees === "number" &&
+        data.rotate_degrees % 360 !== 0
+      ) {
+        const cacheBuster = Date.now();
+        const appendCacheBust = (input) =>
+          input ? `${input}${input.includes("?") ? "&" : "?"}v=${cacheBuster}` : input;
+        mappedPhoto = {
+          ...mappedPhoto,
+          url: appendCacheBust(mappedPhoto.url),
+          thumbnailUrl: appendCacheBust(mappedPhoto.thumbnailUrl),
+          fullUrl: appendCacheBust(mappedPhoto.fullUrl),
+        };
+      }
 
       updateTreeReferences(treeId, (tree) => {
         const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
