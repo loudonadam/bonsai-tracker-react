@@ -156,6 +156,8 @@ const TreeDetail = () => {
   const [updateError, setUpdateError] = useState("");
   const [editingUpdateId, setEditingUpdateId] = useState(null);
   const [isSavingUpdate, setIsSavingUpdate] = useState(false);
+  const [notesError, setNotesError] = useState("");
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [showGraveyardModal, setShowGraveyardModal] = useState(false);
   const [graveyardForm, setGraveyardForm] = useState({
     category: "dead",
@@ -348,26 +350,28 @@ const TreeDetail = () => {
   }, [treeFromCollection, treesLoading, refreshTrees]);
 
   const measurementChartData = useMemo(() => {
-    if (!Array.isArray(tree?.updates)) {
+    if (!Array.isArray(tree?.measurements)) {
       return [];
     }
 
-    return tree.updates
-      .filter((update) => {
-        const hasMeasurement = typeof update.girth === "number" && !Number.isNaN(update.girth);
-        const hasDate = Boolean(update.date);
+    return tree.measurements
+      .map((measurement) => {
+        const hasMeasurement =
+          typeof measurement.trunkDiameter === "number" && !Number.isNaN(measurement.trunkDiameter);
+        const hasDate = Boolean(measurement.measuredAt);
 
         if (!hasMeasurement || !hasDate) {
-          return false;
+          return null;
         }
 
-        return update.girth !== 0;
-      })
-      .map((update) => {
-        const parsedDate = new Date(update.date);
+        const parsedDate = new Date(measurement.measuredAt);
         const timestamp = parsedDate.getTime();
 
         if (Number.isNaN(timestamp)) {
+          return null;
+        }
+
+        if (measurement.trunkDiameter === 0) {
           return null;
         }
 
@@ -378,12 +382,12 @@ const TreeDetail = () => {
             day: "numeric",
             year: "numeric",
           }),
-          measurement: update.girth,
+          measurement: measurement.trunkDiameter,
         };
       })
       .filter(Boolean)
       .sort((a, b) => a.dateValue - b.dateValue);
-  }, [tree?.updates]);
+  }, [tree?.measurements]);
 
   useEffect(() => {
     if (treeFromCollection) {
@@ -735,31 +739,38 @@ const TreeDetail = () => {
 
   const startNotesEdit = () => {
     setNotesDraft(tree?.notes ?? "");
+    setNotesError("");
     setIsEditingNotes(true);
   };
 
   const cancelNotesEdit = () => {
     setNotesDraft(tree?.notes ?? "");
+    setNotesError("");
     setIsEditingNotes(false);
   };
 
-  const handleSaveNotes = () => {
-    const updatedNotes = notesDraft;
-    setTree((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return {
+  const handleSaveNotes = async () => {
+    if (!tree?.id || isSavingNotes) {
+      return;
+    }
+
+    setNotesError("");
+    setIsSavingNotes(true);
+
+    try {
+      const updatedTree = await updateTree(tree.id, { notes: notesDraft ?? "" });
+      setTree(updatedTree);
+      setEditData((prev) => ({
         ...prev,
-        notes: updatedNotes,
-      };
-    });
-    setEditData((prev) => ({
-      ...prev,
-      notes: updatedNotes,
-    }));
-    setNotesDraft(updatedNotes);
-    setIsEditingNotes(false);
+        notes: updatedTree.notes ?? "",
+      }));
+      setNotesDraft(updatedTree.notes ?? "");
+      setIsEditingNotes(false);
+    } catch (error) {
+      setNotesError(error.message || "Failed to save notes. Please try again.");
+    } finally {
+      setIsSavingNotes(false);
+    }
   };
 
   const nextPhoto = () => {
@@ -1561,9 +1572,14 @@ const TreeDetail = () => {
                 <button
                   type="button"
                   onClick={handleSaveNotes}
-                  className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white hover:bg-green-700 transition"
+                  disabled={isSavingNotes}
+                  className={`rounded-lg px-3 py-1 text-sm font-medium text-white transition ${
+                    isSavingNotes
+                      ? "bg-green-400 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-700"
+                  }`}
                 >
-                  Save Notes
+                  {isSavingNotes ? "Saving…" : "Save Notes"}
                 </button>
               </div>
             ) : (
@@ -1587,6 +1603,11 @@ const TreeDetail = () => {
                 placeholder="Create a README-style log for this tree with Markdown headings, lists, and tables."
                 autoFocus
               />
+              {notesError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {notesError}
+                </p>
+              )}
             </div>
           ) : hasNotes ? (
             <div className="markdown-body prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-green-700 prose-li:marker:text-green-600">
