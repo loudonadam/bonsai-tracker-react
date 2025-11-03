@@ -102,6 +102,17 @@ def delete_photo(bonsai_id: int, photo_id: int, db: Session = Depends(get_db)):
 
         media_paths.append(candidate)
 
+    accolades_with_photo = (
+        db.query(models.Accolade)
+        .filter(models.Accolade.photo_id == photo_id)
+        .all()
+    )
+
+    for accolade in accolades_with_photo:
+        accolade.photo_id = None
+        accolade.photo = None
+        db.add(accolade)
+
     db.delete(photo)
     db.commit()
 
