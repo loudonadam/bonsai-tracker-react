@@ -47,10 +47,12 @@ The instructions assume a POSIX shell (macOS/Linux/WSL). Windows PowerShell comm
 
 5. Launch the FastAPI development server:
    ```bash
-   uvicorn app.main:app --reload
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-   By default the API listens on `http://localhost:8000`. Useful endpoints:
+   By default the API listens on `http://localhost:8000` when accessed from the same machine.
+   Binding to `0.0.0.0` keeps it reachable from other devices on your LAN (desktop, laptop,
+   tablet, or phone). Useful endpoints:
 
    - Interactive API docs: `http://localhost:8000/docs`
    - OpenAPI schema: `http://localhost:8000/openapi.json`
@@ -86,7 +88,7 @@ The instructions assume a POSIX shell (macOS/Linux/WSL). Windows PowerShell comm
 
 3. Start the Vite development server:
    ```bash
-   npm run dev -- --host
+   npm run dev -- --host 0.0.0.0 --port 5173
    ```
    Vite prints a local URL (typically `http://localhost:5173`). Open it in your browser after the backend is running. The UI now fetches trees, species, and reminders directly from the API instead of using in-browser mock data.
 
@@ -96,9 +98,9 @@ The instructions assume a POSIX shell (macOS/Linux/WSL). Windows PowerShell comm
 
 ## 3. Testing the full stack quickly
 
-1. Start the backend (`uvicorn app.main:app --reload`).
+1. Start the backend (`uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`).
 2. Seed the database if you want sample content (`python -m app.seed`).
-3. In a second terminal start the front end (`npm run dev -- --host`).
+3. In a second terminal start the front end (`npm run dev -- --host 0.0.0.0 --port 5173`).
 4. Visit `http://localhost:5173` and explore. You can:
    - Add a new bonsai (including optional photos). The API stores the original file and creates a thumbnail automatically.
    - Create new species entries; tree counts stay in sync because the backend updates them.
@@ -108,7 +110,49 @@ When you stop working, deactivate the Python virtual environment with `deactivat
 
 ---
 
-## 4. Project structure
+## 4. Parallel desktop + mobile usage
+
+Follow these steps to work on a desktop or laptop while simultaneously reviewing and editing data from a phone or tablet on the
+same Wi‑Fi/LAN. All devices talk to the single FastAPI instance, so updates made anywhere immediately appear everywhere else bec
+ause they read and write to the shared SQLite database and media directories.
+
+1. Make sure the desktop/laptop that runs the servers and your mobile device are on the same network. Disable VPNs that would pu
+t them on separate subnets.
+2. Find the IP address of the machine running the servers:
+   - macOS/Linux: `ipconfig getifaddr en0` (Wi‑Fi) or `ifconfig` and copy the `inet` value.
+   - Windows PowerShell: `Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -match "Wi"}`
+3. Update the front-end environment file so it points to that IP:
+   ```bash
+   # from the repository root
+   cp .env.example .env.local      # if you have not already
+   # then edit .env.local and replace localhost with your IP, for example
+   # VITE_API_BASE_URL=http://192.168.1.50:8000/api
+   ```
+4. (Optional but recommended) Configure your operating system firewall to allow inbound connections on ports **8000** (FastAPI)
+   and **5173** (Vite dev server).
+5. Start the backend with the network-facing host:
+   ```bash
+   cd backend
+   source .venv/bin/activate  # or .venv\Scripts\Activate.ps1 on Windows
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+6. Start the front end from another terminal:
+   ```bash
+   npm run dev -- --host 0.0.0.0 --port 5173
+   ```
+7. On the desktop you can continue using `http://localhost:5173`, but you can also open
+   `http://<your-ip>:5173` to confirm external access.
+8. On the mobile device open a browser and visit `http://<your-ip>:5173`. The React app reads the `.env.local` setting, calls
+   the FastAPI API at `http://<your-ip>:8000/api`, and receives the same bonsai data, photos, and notifications stored on disk.
+9. Add or edit data from either device. Because there is only one backend process, every change is immediately written to the
+   database and media storage, so refreshing the UI on any device reflects the updates.
+
+When you are done, stop both servers (Ctrl+C) and deactivate the Python virtual environment. Mobile clients will no longer be
+able to reach the app until you restart the services.
+
+---
+
+## 5. Project structure
 
 ```
 backend/
@@ -128,7 +172,7 @@ frontend (root)/
 
 ---
 
-## 5. Compatibility matrix
+## 6. Compatibility matrix
 
 All Python package versions were pinned and tested together:
 
@@ -144,7 +188,7 @@ The React application relies on Node.js tooling managed by `npm install`. No add
 
 ---
 
-## 6. Useful commands summary
+## 7. Useful commands summary
 
 ```bash
 # Backend
@@ -153,20 +197,20 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.seed        # optional sample data
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Frontend (new terminal)
 cd <repo root>
 cp .env.example .env.local
 npm install
-npm run dev -- --host
+npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
 You now have a complete local bonsai-tracking stack with persistent storage, photo management, and an API-driven React interface.
 
 ---
 
-## 7. README formatting guide
+## 8. README formatting guide
 
 The project now includes README-style editors for species care notes and individual tree logs. These editors expect Markdown so you can build rich documents without leaving the app. Here is a quick refresher on common patterns you can mix and match when writing structured plant guides:
 
