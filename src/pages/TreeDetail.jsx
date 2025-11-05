@@ -38,6 +38,7 @@ import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
 import ExportProgressOverlay from "../components/ExportProgressOverlay";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { getApiBaseUrl } from "../services/apiClient";
 
 // Try importing Recharts safely
@@ -153,6 +154,10 @@ const TreeDetail = () => {
   const [isSavingAccolade, setIsSavingAccolade] = useState(false);
   const [isRemovingAccoladeId, setIsRemovingAccoladeId] = useState(null);
   const [accoladeActionError, setAccoladeActionError] = useState("");
+  const [deleteAccoladeConfirm, setDeleteAccoladeConfirm] = useState({
+    open: false,
+    accolade: null,
+  });
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [newUpdate, setNewUpdate] = useState(initialUpdateState);
@@ -161,6 +166,10 @@ const TreeDetail = () => {
   const [isSavingUpdate, setIsSavingUpdate] = useState(false);
   const [updateActionError, setUpdateActionError] = useState("");
   const [isDeletingUpdateId, setIsDeletingUpdateId] = useState(null);
+  const [deleteUpdateConfirm, setDeleteUpdateConfirm] = useState({
+    open: false,
+    update: null,
+  });
   const [notesError, setNotesError] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [showGraveyardModal, setShowGraveyardModal] = useState(false);
@@ -1230,8 +1239,25 @@ const TreeDetail = () => {
     }
   };
 
+  const requestDeleteAccolade = (accolade) => {
+    setAccoladeActionError("");
+    setDeleteAccoladeConfirm({ open: true, accolade });
+  };
+
+  const cancelDeleteAccolade = () => {
+    if (
+      isRemovingAccoladeId !== null &&
+      deleteAccoladeConfirm.accolade?.id === isRemovingAccoladeId
+    ) {
+      return;
+    }
+
+    setDeleteAccoladeConfirm({ open: false, accolade: null });
+    setAccoladeActionError("");
+  };
+
   const handleRemoveAccolade = async (accoladeId) => {
-    if (!tree?.id || isRemovingAccoladeId === accoladeId) {
+    if (!tree?.id || !accoladeId || isRemovingAccoladeId === accoladeId) {
       return;
     }
 
@@ -1243,6 +1269,7 @@ const TreeDetail = () => {
       const refreshed = await fetchTreeById(tree.id);
       setTree(refreshed);
       setAccolades(refreshed.accolades ?? []);
+      setDeleteAccoladeConfirm({ open: false, accolade: null });
     } catch (error) {
       setAccoladeActionError(
         error.message || "Unable to remove this accolade right now."
@@ -1582,8 +1609,25 @@ const TreeDetail = () => {
     }
   };
 
+  const requestDeleteUpdate = (update) => {
+    setUpdateActionError("");
+    setDeleteUpdateConfirm({ open: true, update });
+  };
+
+  const cancelDeleteUpdate = () => {
+    if (
+      isDeletingUpdateId !== null &&
+      deleteUpdateConfirm.update?.id === isDeletingUpdateId
+    ) {
+      return;
+    }
+
+    setDeleteUpdateConfirm({ open: false, update: null });
+    setUpdateActionError("");
+  };
+
   const handleDeleteUpdate = async (updateId) => {
-    if (!tree?.id || isDeletingUpdateId === updateId) {
+    if (!tree?.id || !updateId || isDeletingUpdateId === updateId) {
       return;
     }
 
@@ -1595,6 +1639,7 @@ const TreeDetail = () => {
       const refreshed = await fetchTreeById(tree.id);
       setTree(refreshed);
       setAccolades(refreshed.accolades ?? []);
+      setDeleteUpdateConfirm({ open: false, update: null });
     } catch (error) {
       setUpdateActionError(
         error.message || "Unable to delete this update right now."
@@ -1937,10 +1982,14 @@ const TreeDetail = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDeleteUpdate(update.id)}
+                    onClick={() => requestDeleteUpdate(update)}
                     className="text-gray-400 transition hover:text-red-600 disabled:opacity-50"
                     aria-label="Delete tree update"
-                    disabled={isDeletingUpdateId === update.id}
+                    disabled={
+                      isDeletingUpdateId === update.id ||
+                      (deleteUpdateConfirm.open &&
+                        deleteUpdateConfirm.update?.id === update.id)
+                    }
                   >
                     {isDeletingUpdateId === update.id ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -2293,11 +2342,15 @@ const TreeDetail = () => {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleRemoveAccolade(accolade.id);
+                            requestDeleteAccolade(accolade);
                           }}
                           className="text-gray-400 transition hover:text-red-600 disabled:opacity-50"
                           aria-label="Delete accolade"
-                          disabled={isRemovingAccoladeId === accolade.id}
+                          disabled={
+                            isRemovingAccoladeId === accolade.id ||
+                            (deleteAccoladeConfirm.open &&
+                              deleteAccoladeConfirm.accolade?.id === accolade.id)
+                          }
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2843,6 +2896,52 @@ const TreeDetail = () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteUpdateConfirm.open}
+        title="Delete tree update"
+        description={
+          deleteUpdateConfirm.update
+            ? `This will permanently remove the update from ${formatDate(
+                deleteUpdateConfirm.update.date
+              )}. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete update"
+        destructive
+        isLoading={
+          deleteUpdateConfirm.update
+            ? isDeletingUpdateId === deleteUpdateConfirm.update.id
+            : false
+        }
+        error={updateActionError}
+        onCancel={cancelDeleteUpdate}
+        onConfirm={() =>
+          handleDeleteUpdate(deleteUpdateConfirm.update?.id ?? null)
+        }
+      />
+
+      <ConfirmDialog
+        open={deleteAccoladeConfirm.open}
+        title="Remove accolade"
+        description={
+          deleteAccoladeConfirm.accolade
+            ? `This will remove the accolade "${deleteAccoladeConfirm.accolade.title}" from ${tree?.name || "this tree"}. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Remove accolade"
+        destructive
+        isLoading={
+          deleteAccoladeConfirm.accolade
+            ? isRemovingAccoladeId === deleteAccoladeConfirm.accolade.id
+            : false
+        }
+        error={accoladeActionError}
+        onCancel={cancelDeleteAccolade}
+        onConfirm={() =>
+          handleRemoveAccolade(deleteAccoladeConfirm.accolade?.id ?? null)
+        }
+      />
 
       {showDeletePhotoModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">

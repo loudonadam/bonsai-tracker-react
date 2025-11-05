@@ -15,6 +15,7 @@ import {
 import TreeCard from "../components/TreeCard";
 import AddTreeModal from "../components/AddTreeModal";
 import AddReminderModal from "../components/AddReminderModal";
+import ConfirmDialog from "../components/ConfirmDialog";
 import {
   appendReminderToStorage,
   loadStoredReminders,
@@ -111,7 +112,7 @@ const ReminderCard = ({ reminder, onComplete, status, todayStart }) => {
           </p>
         </div>
         <button
-          onClick={() => onComplete(reminder.id)}
+          onClick={() => onComplete(reminder)}
           className="shrink-0 rounded-full border border-green-200 px-3 py-1 text-xs font-medium text-green-700 transition hover:bg-green-50 hover:text-green-800"
         >
           <div className="flex items-center gap-1">
@@ -149,6 +150,12 @@ const Home = () => {
     saveStoredReminders(DEFAULT_REMINDERS);
     return DEFAULT_REMINDERS;
   });
+  const [completeReminderConfirm, setCompleteReminderConfirm] = useState({
+    open: false,
+    reminder: null,
+  });
+  const [isCompletingReminder, setIsCompletingReminder] = useState(false);
+  const [reminderActionError, setReminderActionError] = useState("");
 
   // ─── Derived Stats ───────────────────────────────────────────
   const totalTrees = trees.length;
@@ -216,9 +223,40 @@ const Home = () => {
     setShowAddReminder(false);
   };
 
-  const handleCompleteReminder = (id) => {
-    const updated = removeReminderFromStorage(id);
-    setReminders(updated);
+  const requestCompleteReminder = (reminder) => {
+    setReminderActionError("");
+    setCompleteReminderConfirm({ open: true, reminder });
+  };
+
+  const cancelCompleteReminder = () => {
+    if (isCompletingReminder) {
+      return;
+    }
+
+    setCompleteReminderConfirm({ open: false, reminder: null });
+    setReminderActionError("");
+  };
+
+  const handleConfirmCompleteReminder = () => {
+    const reminderId = completeReminderConfirm.reminder?.id;
+    if (!reminderId) {
+      return;
+    }
+
+    setIsCompletingReminder(true);
+    setReminderActionError("");
+
+    try {
+      const updated = removeReminderFromStorage(reminderId);
+      setReminders(updated);
+      setCompleteReminderConfirm({ open: false, reminder: null });
+    } catch (error) {
+      setReminderActionError(
+        error.message || "Unable to complete this reminder right now."
+      );
+    } finally {
+      setIsCompletingReminder(false);
+    }
   };
 
   const todayStart = useMemo(() => startOfDay(), []);
@@ -523,7 +561,7 @@ const Home = () => {
                       <ReminderCard
                         key={r.id}
                         reminder={r}
-                        onComplete={handleCompleteReminder}
+                        onComplete={requestCompleteReminder}
                         status="overdue"
                         todayStart={todayStart}
                       />
@@ -543,7 +581,7 @@ const Home = () => {
                       <ReminderCard
                         key={r.id}
                         reminder={r}
-                        onComplete={handleCompleteReminder}
+                        onComplete={requestCompleteReminder}
                         status="upcoming"
                         todayStart={todayStart}
                       />
@@ -624,6 +662,24 @@ const Home = () => {
         show={showAddTree}
         onClose={() => setShowAddTree(false)}
         onSave={handleAddTree}
+      />
+
+      <ConfirmDialog
+        open={completeReminderConfirm.open}
+        title="Mark reminder complete"
+        description={
+          completeReminderConfirm.reminder
+            ? `Mark the reminder for ${
+                completeReminderConfirm.reminder.treeName || "this tree"
+              } as complete? This will remove it from your dashboard.`
+            : ""
+        }
+        confirmLabel="Mark complete"
+        destructive
+        isLoading={isCompletingReminder}
+        error={reminderActionError}
+        onCancel={cancelCompleteReminder}
+        onConfirm={handleConfirmCompleteReminder}
       />
 
       <AddReminderModal
