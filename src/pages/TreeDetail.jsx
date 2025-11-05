@@ -2152,43 +2152,44 @@ const TreeDetail = () => {
         description={exportStatusMessage}
       />
       <div className="min-h-screen bg-gray-50 px-2 sm:px-4 lg:px-6">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/')}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              <span>Back to Collection</span>
-            </button>
+        {/* Header */}
+        <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
+          <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                onClick={() => navigate('/')}
+                className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-gray-900"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span>Back to Collection</span>
+              </button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <button
+                  onClick={handleExportTree}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 sm:w-auto"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Export Tree</span>
+                </button>
+                <button
+                  onClick={openEditModal}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 sm:w-auto"
+                >
+                  <Edit className="h-4 w-4" />
+                  <span>Edit Tree</span>
+                </button>
+                <button
+                  onClick={openMoveToGraveyardModal}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-300 sm:w-auto"
+                >
+                  <Skull className="h-4 w-4" />
+                  <span>Move to Graveyard</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleExportTree}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export Tree
-            </button>
-            <button
-              onClick={openEditModal}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-            >
-              <Edit className="w-4 h-4" />
-              Edit Tree
-            </button>
-            <button
-              onClick={openMoveToGraveyardModal}
-              className="flex items-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-gray-700 transition hover:bg-gray-300"
-            >
-              Move to Graveyard
-            </button>
-          </div>
-        </div>
-        <div className="h-1 bg-green-600"></div>
-      </header>
+          <div className="h-1 bg-green-600"></div>
+        </header>
 
       <main className="mx-auto grid w-full max-w-[1800px] grid-cols-1 gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_350px] lg:px-8">
         <div>
