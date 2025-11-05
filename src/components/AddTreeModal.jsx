@@ -6,6 +6,7 @@ import {
 } from "../utils/developmentStages";
 import { useSpecies } from "../context/SpeciesContext";
 import { extractPhotoDate } from "../utils/photoMetadata";
+import DatePicker from "./DatePicker";
 
 const AddTreeModal = ({ show, onClose, onSave }) => {
   const [newTree, setNewTree] = useState({
@@ -326,13 +327,12 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Date Acquired *
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={newTree.acquisitionDate}
-              onChange={(e) =>
-                setNewTree({ ...newTree, acquisitionDate: e.target.value })
+              onChange={(event) =>
+                setNewTree({ ...newTree, acquisitionDate: event.target.value })
               }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+              placeholder="Select acquisition date"
             />
           </div>
 
@@ -341,13 +341,12 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Estimated Origin Date *
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={newTree.originDate}
-              onChange={(e) =>
-                setNewTree({ ...newTree, originDate: e.target.value })
+              onChange={(event) =>
+                setNewTree({ ...newTree, originDate: event.target.value })
               }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+              placeholder="Select origin date"
             />
           </div>
 

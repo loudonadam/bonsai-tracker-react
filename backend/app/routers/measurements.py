@@ -35,3 +35,20 @@ def list_measurements(bonsai_id: int, db: Session = Depends(get_db)):
         .order_by(models.Measurement.measured_at.desc())
         .all()
     )
+
+
+@router.delete(
+    "/{bonsai_id}/measurements/{measurement_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_measurement(
+    bonsai_id: int,
+    measurement_id: int,
+    db: Session = Depends(get_db),
+):
+    measurement = db.get(models.Measurement, measurement_id)
+    if not measurement or measurement.bonsai_id != bonsai_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Measurement not found")
+
+    db.delete(measurement)
+    db.commit()

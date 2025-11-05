@@ -75,6 +75,20 @@ const Settings = () => {
       return;
     }
 
+    const confirmationMessage = [
+      `Importing "${file.name}" will replace your current bonsai collection with the backup data.`,
+      "Any trees, photos, updates, and measurements not included in the file will be permanently removed.",
+      "This action cannot be undone. Do you want to continue?",
+    ].join("\n\n");
+
+    const confirmed = window.confirm(confirmationMessage);
+    if (!confirmed) {
+      if (event.target) {
+        event.target.value = "";
+      }
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append("file", file);

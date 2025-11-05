@@ -40,6 +40,7 @@ import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
 import ExportProgressOverlay from "../components/ExportProgressOverlay";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { getApiBaseUrl } from "../services/apiClient";
+import DatePicker from "../components/DatePicker";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -127,6 +128,7 @@ const TreeDetail = () => {
     updateTreePhoto,
     deleteTreePhoto,
     createTreeMeasurement,
+    deleteTreeMeasurement,
     createTreeUpdate,
     updateTreeUpdate,
     deleteTreeUpdate,
@@ -1626,16 +1628,68 @@ const TreeDetail = () => {
     setUpdateActionError("");
   };
 
-  const handleDeleteUpdate = async (updateId) => {
-    if (!tree?.id || !updateId || isDeletingUpdateId === updateId) {
+  const handleDeleteUpdate = async (updateOrId) => {
+    if (!tree?.id) {
       return;
     }
+
+    const updateRecord =
+      typeof updateOrId === "object" && updateOrId !== null
+        ? updateOrId
+        : tree?.updates?.find(
+            (item) => Number(item.id) === Number(updateOrId)
+          ) ?? null;
+    const updateId =
+      typeof updateOrId === "object" && updateOrId !== null
+        ? updateOrId.id
+        : updateOrId;
+
+    if (!updateId || isDeletingUpdateId === updateId) {
+      return;
+    }
+
+    const toDateKey = (input) => {
+      if (!input) {
+        return null;
+      }
+      const parsed = new Date(input);
+      if (Number.isNaN(parsed.getTime())) {
+        return null;
+      }
+      return `${parsed.getFullYear()}-${parsed.getMonth()}-${parsed.getDate()}`;
+    };
+
+    const updateDateKey = toDateKey(
+      updateRecord?.performedAt ?? updateRecord?.date ?? null
+    );
+
+    const measurementForUpdate =
+      updateDateKey && Array.isArray(tree?.measurements)
+        ? tree.measurements.find((measurement) => {
+            const measurementKey = toDateKey(measurement.measuredAt);
+            return measurementKey === updateDateKey;
+          }) ?? null
+        : null;
 
     setIsDeletingUpdateId(updateId);
     setUpdateActionError("");
 
     try {
       await deleteTreeUpdate(tree.id, updateId);
+      if (measurementForUpdate) {
+        try {
+          await deleteTreeMeasurement(tree.id, measurementForUpdate.id);
+        } catch (measurementError) {
+          console.error(
+            "Failed to delete measurement associated with the update",
+            measurementError
+          );
+          throw new Error(
+            measurementError?.message ||
+              "The update was removed, but its measurement could not be deleted."
+          );
+        }
+      }
       const refreshed = await fetchTreeById(tree.id);
       setTree(refreshed);
       setAccolades(refreshed.accolades ?? []);
@@ -2517,12 +2571,13 @@ const TreeDetail = () => {
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Date <span className="text-red-600">*</span>
-              <input
-                type="date"
+              <DatePicker
                 value={newUpdate.date}
-                onChange={(e) => setNewUpdate((prev) => ({ ...prev, date: e.target.value }))}
-                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                onChange={(event) =>
+                  setNewUpdate((prev) => ({ ...prev, date: event.target.value }))
+                }
                 aria-required="true"
+                placeholder="Select update date"
               />
             </label>
 
@@ -2598,16 +2653,15 @@ const TreeDetail = () => {
                     </label>
                     <label className="flex flex-col gap-1 text-sm text-gray-700">
                       Reminder Due Date <span className="text-red-600">*</span>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={newUpdate.reminderDueDate}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           setNewUpdate((prev) => ({
                             ...prev,
-                            reminderDueDate: e.target.value,
+                            reminderDueDate: event.target.value,
                           }))
                         }
-                        className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                        placeholder="Choose reminder due date"
                         aria-required="true"
                       />
                     </label>
@@ -2719,8 +2773,7 @@ const TreeDetail = () => {
             <div className="space-y-3">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Photo Date
-                <input
-                  type="date"
+                <DatePicker
                   value={newPhoto.takenAt}
                   onChange={(event) =>
                     setNewPhoto((prev) => ({
@@ -2728,7 +2781,7 @@ const TreeDetail = () => {
                       takenAt: event.target.value,
                     }))
                   }
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  placeholder="Select photo date"
                 />
                 <span className="text-xs text-gray-500">
                   Automatically extracted from the photo metadata. You can adjust it here.
@@ -2843,8 +2896,7 @@ const TreeDetail = () => {
             <div className="space-y-3">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Photo Date
-                <input
-                  type="date"
+                <DatePicker
                   value={photoEditData.takenAt}
                   onChange={(event) =>
                     setPhotoEditData((prev) => ({
@@ -2852,7 +2904,7 @@ const TreeDetail = () => {
                       takenAt: event.target.value,
                     }))
                   }
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  placeholder="Select photo date"
                 />
                 <span className="text-xs text-gray-500">
                   Update the date associated with this photo.
@@ -2916,9 +2968,7 @@ const TreeDetail = () => {
         }
         error={updateActionError}
         onCancel={cancelDeleteUpdate}
-        onConfirm={() =>
-          handleDeleteUpdate(deleteUpdateConfirm.update?.id ?? null)
-        }
+        onConfirm={() => handleDeleteUpdate(deleteUpdateConfirm.update ?? null)}
       />
 
       <ConfirmDialog
@@ -3259,11 +3309,15 @@ const TreeDetail = () => {
 
               <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
                 Date Acquired
-                <input
-                  type="date"
+                <DatePicker
                   value={editData.acquisitionDate}
-                  onChange={(e) => setEditData((prev) => ({ ...prev, acquisitionDate: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                  onChange={(event) =>
+                    setEditData((prev) => ({
+                      ...prev,
+                      acquisitionDate: event.target.value,
+                    }))
+                  }
+                  placeholder="Select acquisition date"
                 />
               </label>
 

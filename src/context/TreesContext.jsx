@@ -410,6 +410,23 @@ export const TreesProvider = ({ children }) => {
     [updateTreeReferences]
   );
 
+  const deleteTreeMeasurement = useCallback(
+    async (treeId, measurementId) => {
+      await apiClient.delete(`/bonsai/${treeId}/measurements/${measurementId}`);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.measurements) ? tree.measurements : [];
+        return {
+          ...tree,
+          measurements: existing.filter(
+            (measurement) => Number(measurement.id) !== Number(measurementId)
+          ),
+        };
+      });
+    },
+    [updateTreeReferences]
+  );
+
   const createTreeUpdate = useCallback(
     async (treeId, data) => {
       const response = await apiClient.post(`/bonsai/${treeId}/updates`, data);
@@ -691,6 +708,7 @@ export const TreesProvider = ({ children }) => {
       updateTreePhoto,
       deleteTreePhoto,
       createTreeMeasurement,
+      deleteTreeMeasurement,
       createTreeUpdate,
       updateTreeUpdate,
       deleteTreeUpdate,
@@ -715,6 +733,7 @@ export const TreesProvider = ({ children }) => {
       updateTreePhoto,
       deleteTreePhoto,
       createTreeMeasurement,
+      deleteTreeMeasurement,
       createTreeUpdate,
       updateTreeUpdate,
       deleteTreeUpdate,

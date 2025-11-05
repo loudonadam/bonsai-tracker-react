@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import DatePicker from "./DatePicker";
 
 const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
   const [form, setForm] = useState({
@@ -101,11 +102,12 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Due Date <span className="text-red-600">*</span>
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={form.dueDate}
-              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-600 focus:border-transparent"
+              onChange={(event) =>
+                setForm({ ...form, dueDate: event.target.value })
+              }
+              placeholder="Choose a due date"
               aria-required="true"
             />
           </div>
