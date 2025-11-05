@@ -525,7 +525,7 @@ const DatePicker = forwardRef(
                   (minKey && dayKey < minKey) || (maxKey && dayKey > maxKey);
 
                 const dayClasses = [
-                  "relative flex h-9 w-9 items-center justify-center rounded-full text-sm transition",
+                  "relative flex h-10 w-10 items-center justify-center rounded-md text-sm transition",
                   day.currentMonth ? "text-gray-900" : "text-gray-400",
                   isSelected ? "bg-green-600 text-white" : "hover:bg-gray-100",
                   isDisabled ? "cursor-not-allowed text-gray-300 hover:bg-transparent" : "",
@@ -542,7 +542,7 @@ const DatePicker = forwardRef(
                     disabled={isDisabled}
                   >
                     {isToday && !isSelected && (
-                      <span className="absolute inset-0 rounded-full border border-green-400" aria-hidden="true" />
+                      <span className="absolute inset-0 rounded-md border border-green-400" aria-hidden="true" />
                     )}
                     <span className="relative z-10 font-medium">
                       {day.date.getDate()}
