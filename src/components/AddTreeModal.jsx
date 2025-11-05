@@ -7,6 +7,7 @@ import {
 import { useSpecies } from "../context/SpeciesContext";
 import { extractPhotoDate } from "../utils/photoMetadata";
 import DatePicker from "./DatePicker";
+import FieldLabel from "./FieldLabel";
 
 const AddTreeModal = ({ show, onClose, onSave }) => {
   const [newTree, setNewTree] = useState({
@@ -207,7 +208,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
           {/* Tree Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tree Name *
+              <FieldLabel required>Tree Name</FieldLabel>
             </label>
             <input
               type="text"
@@ -223,7 +224,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
           {/* Species */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Species *
+              <FieldLabel required>Species</FieldLabel>
             </label>
             <div className="space-y-2">
               <select
@@ -268,7 +269,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
                   </p>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Common Name *
+                      <FieldLabel required className="text-xs">Common Name</FieldLabel>
                     </label>
                     <input
                       type="text"
@@ -325,7 +326,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
           {/* Date Acquired */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Date Acquired *
+              <FieldLabel required>Date Acquired</FieldLabel>
             </label>
             <DatePicker
               value={newTree.acquisitionDate}
@@ -339,7 +340,7 @@ const AddTreeModal = ({ show, onClose, onSave }) => {
           {/* Estimated Origin Date */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Estimated Origin Date *
+              <FieldLabel required>Estimated Origin Date</FieldLabel>
             </label>
             <DatePicker
               value={newTree.originDate}

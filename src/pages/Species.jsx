@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
 import MarkdownReadmeEditor from "../components/MarkdownReadmeEditor";
+import FieldLabel from "../components/FieldLabel";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { SPECIES_CARE_TEMPLATE } from "../constants/careTemplates";
 import { useSpecies } from "../context/SpeciesContext";
@@ -228,7 +229,7 @@ const Species = () => {
                 )}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">
-                    Common Name <span className="text-red-600">*</span>
+                    <FieldLabel required>Common Name</FieldLabel>
                   </label>
                   <input
                     type="text"

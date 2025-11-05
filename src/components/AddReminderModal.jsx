@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import DatePicker from "./DatePicker";
+import FieldLabel from "./FieldLabel";
 
 const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
   const [form, setForm] = useState({
@@ -67,7 +68,7 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tree <span className="text-red-600">*</span>
+              <FieldLabel required>Tree</FieldLabel>
             </label>
             <select
               value={form.treeId}
@@ -86,7 +87,7 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Message <span className="text-red-600">*</span>
+              <FieldLabel required>Message</FieldLabel>
             </label>
             <input
               type="text"
@@ -100,7 +101,7 @@ const AddReminderModal = ({ show, onClose, onSave, trees = [] }) => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Due Date <span className="text-red-600">*</span>
+              <FieldLabel required>Due Date</FieldLabel>
             </label>
             <DatePicker
               value={form.dueDate}

@@ -1,9 +1,10 @@
 import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, Download, Save } from "lucide-react";
+import { ArrowLeft, Upload, Download, Save, AlertCircle, CheckCircle2 } from "lucide-react";
 
 import { getApiBaseUrl } from "../services/apiClient";
 import ExportProgressOverlay from "../components/ExportProgressOverlay";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -19,15 +20,27 @@ const Settings = () => {
   const [exportStatusMessage, setExportStatusMessage] = useState(
     "We're gathering your bonsai collection. This may take a moment."
   );
+  const [feedback, setFeedback] = useState(null);
+  const [importConfirm, setImportConfirm] = useState({ open: false, file: null });
+  const [isImporting, setIsImporting] = useState(false);
+
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const clearFeedback = () => setFeedback(null);
+  const showFeedback = (type, message) => setFeedback({ type, message });
 
   const handleNameSave = () => {
-    alert(`Collection name saved as: ${collectionName}`);
-    // You can store this in localStorage or your backend later
     localStorage.setItem("collectionName", collectionName);
+    showFeedback("success", `Collection name updated to “${collectionName}”.`);
   };
 
   const handleExport = async () => {
     try {
+      clearFeedback();
       setExportStatusMessage(
         "We're gathering your bonsai collection. This may take a moment."
       );
@@ -61,37 +74,40 @@ const Settings = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(downloadUrl);
+      showFeedback("success", "Your bonsai data download is starting.");
     } catch (error) {
       console.error("Failed to export bonsai data", error);
-      alert(error.message || "Unable to export bonsai data.");
+      showFeedback("error", error.message || "Unable to export bonsai data.");
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleImport = async (event) => {
+  const handleImportChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    const confirmationMessage = [
-      `Importing "${file.name}" will replace your current bonsai collection with the backup data.`,
-      "Any trees, photos, updates, and measurements not included in the file will be permanently removed.",
-      "This action cannot be undone. Do you want to continue?",
-    ].join("\n\n");
+    setImportConfirm({ open: true, file });
+  };
 
-    const confirmed = window.confirm(confirmationMessage);
-    if (!confirmed) {
-      if (event.target) {
-        event.target.value = "";
-      }
+  const cancelImport = () => {
+    resetFileInput();
+    setImportConfirm({ open: false, file: null });
+  };
+
+  const confirmImport = async () => {
+    if (!importConfirm.file) {
       return;
     }
 
     try {
+      clearFeedback();
+      setIsImporting(true);
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", importConfirm.file);
 
       const response = await fetch(`${apiBaseUrl}/backup/import`, {
         method: "POST",
@@ -125,16 +141,20 @@ const Settings = () => {
         }
       }
 
-      alert(successMessage);
+      showFeedback("success", successMessage);
     } catch (error) {
       console.error("Failed to import bonsai data", error);
-      alert(error.message || "Unable to import bonsai data.");
+      showFeedback("error", error.message || "Unable to import bonsai data.");
     } finally {
-      if (event.target) {
-        event.target.value = "";
-      }
+      setIsImporting(false);
+      resetFileInput();
+      setImportConfirm({ open: false, file: null });
     }
   };
+
+  const importWarningMessage = importConfirm.file
+    ? `Importing “${importConfirm.file.name}” will replace your current bonsai collection with the backup data.\n\nAny trees, photos, updates, and measurements not included in the file will be permanently removed.\n\nThis action cannot be undone. Do you want to continue?`
+    : "Importing a backup will replace your current bonsai collection.";
 
   return (
     <>
@@ -161,6 +181,23 @@ const Settings = () => {
 
       {/* MAIN CONTENT */}
       <main className="w-full max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {feedback && (
+          <div
+            className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${
+              feedback.type === "error"
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {feedback.type === "error" ? (
+              <AlertCircle className="mt-0.5 h-5 w-5" />
+            ) : (
+              <CheckCircle2 className="mt-0.5 h-5 w-5" />
+            )}
+            <div>{feedback.message}</div>
+          </div>
+        )}
+
         {/* Collection Name */}
         <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
@@ -214,7 +251,7 @@ const Settings = () => {
             type="file"
             accept=".zip"
             ref={fileInputRef}
-            onChange={handleImport}
+            onChange={handleImportChange}
             className="hidden"
           />
           <button
@@ -227,6 +264,17 @@ const Settings = () => {
         </section>
       </main>
       </div>
+      <ConfirmDialog
+        open={importConfirm.open}
+        title="Replace collection with backup?"
+        description={importWarningMessage}
+        confirmLabel="Import backup"
+        cancelLabel="Go back"
+        destructive
+        onConfirm={confirmImport}
+        onCancel={cancelImport}
+        isLoading={isImporting}
+      />
     </>
   );
 };

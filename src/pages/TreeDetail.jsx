@@ -41,6 +41,7 @@ import ExportProgressOverlay from "../components/ExportProgressOverlay";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { getApiBaseUrl } from "../services/apiClient";
 import DatePicker from "../components/DatePicker";
+import FieldLabel from "../components/FieldLabel";
 
 // Try importing Recharts safely
 let RechartsAvailable = true;
@@ -2444,7 +2445,7 @@ const TreeDetail = () => {
             <form className="space-y-5" onSubmit={handleMoveToGraveyard}>
               <div>
                 <span className="block text-sm font-medium text-gray-700 mb-2">
-                  Reason <span className="text-red-600">*</span>
+                  <FieldLabel required>Reason</FieldLabel>
                 </span>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label
@@ -2570,7 +2571,7 @@ const TreeDetail = () => {
             )}
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Date <span className="text-red-600">*</span>
+              <FieldLabel required>Date</FieldLabel>
               <DatePicker
                 value={newUpdate.date}
                 onChange={(event) =>
@@ -2595,7 +2596,7 @@ const TreeDetail = () => {
             </label>
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Work Performed <span className="text-red-600">*</span>
+              <FieldLabel required>Work Performed</FieldLabel>
               <textarea
                 value={newUpdate.workPerformed}
                 onChange={(e) => setNewUpdate((prev) => ({ ...prev, workPerformed: e.target.value }))}
@@ -2636,7 +2637,7 @@ const TreeDetail = () => {
                 {newUpdate.addReminder && (
                   <div className="grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
                     <label className="flex flex-col gap-1 text-sm text-gray-700">
-                      Reminder Message <span className="text-red-600">*</span>
+                      <FieldLabel required>Reminder Message</FieldLabel>
                       <input
                         type="text"
                         value={newUpdate.reminderMessage}
@@ -2652,7 +2653,7 @@ const TreeDetail = () => {
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-sm text-gray-700">
-                      Reminder Due Date <span className="text-red-600">*</span>
+                      <FieldLabel required>Reminder Due Date</FieldLabel>
                       <DatePicker
                         value={newUpdate.reminderDueDate}
                         onChange={(event) =>
@@ -3258,7 +3259,9 @@ const TreeDetail = () => {
                         Adding a new species will also save it to your library.
                       </p>
                       <div className="space-y-1">
-                        <label className="font-medium text-gray-700">Common Name *</label>
+                        <label className="font-medium text-gray-700">
+                          <FieldLabel required>Common Name</FieldLabel>
+                        </label>
                         <input
                           type="text"
                           value={editNewSpecies.commonName}

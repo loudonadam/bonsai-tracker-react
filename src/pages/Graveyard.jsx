@@ -127,6 +127,7 @@ const Graveyard = () => {
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, entry: null });
   const [deletingTreeId, setDeletingTreeId] = useState(null);
   const [deleteError, setDeleteError] = useState("");
+  const [lastAction, setLastAction] = useState(null);
 
   const deadTrees = graveyard.filter((entry) => entry.category === "dead");
   const newOwnerTrees = graveyard.filter((entry) => entry.category === "new-owner");
@@ -152,6 +153,7 @@ const Graveyard = () => {
     try {
       await deleteTreePermanently(entry.tree.id);
       setDeleteConfirm({ open: false, entry: null });
+      setLastAction("deleted");
     } catch (error) {
       setDeleteError(error.message || "Failed to delete tree. Please try again.");
     } finally {
@@ -159,12 +161,20 @@ const Graveyard = () => {
     }
   };
 
+  const handleBack = () => {
+    if (lastAction === "deleted") {
+      navigate("/");
+      return;
+    }
+    navigate(-1);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <div className="mx-auto max-w-5xl space-y-10 px-4 py-10 sm:px-6 lg:px-8">
         <header className="space-y-4">
           <button
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
             className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-700"
           >
             <ArrowLeft className="w-4 h-4" />
