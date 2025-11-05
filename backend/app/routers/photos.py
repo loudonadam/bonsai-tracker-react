@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from PIL import Image
+from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -58,7 +58,11 @@ def _rotate_photo_files(photo: models.Photo, degrees: int) -> None:
 
     try:
         with Image.open(full_path) as image:
-            rotated = image.rotate(-normalized, expand=True)
+            try:
+                oriented = ImageOps.exif_transpose(image)
+            except Exception:  # pragma: no cover - fallback if EXIF data is invalid
+                oriented = image
+            rotated = oriented.rotate(-normalized, expand=True)
             if suffix in {".jpg", ".jpeg"} and rotated.mode != "RGB":
                 rotated = rotated.convert("RGB")
             rotated.save(full_path)
