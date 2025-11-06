@@ -2294,7 +2294,7 @@ const TreeDetail = () => {
 
         {/* Sidebar */}
         <aside className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="hidden md:block bg-white rounded-lg shadow-sm p-6">
             <h3 className="font-semibold text-gray-800 mb-3">Quick Stats</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">

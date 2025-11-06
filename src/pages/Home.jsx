@@ -395,7 +395,7 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* HEADER */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-white shadow-sm border-b border-gray-200 lg:sticky lg:top-0 lg:z-10">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
           <div className="hidden lg:flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 flex-1">
@@ -452,15 +452,17 @@ const Home = () => {
                 </button>
               </div>
             </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search trees..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-600"
-              />
+            <div className="sticky top-0 z-20 -mx-4 border-y border-gray-200 bg-white/95 px-4 py-2 backdrop-blur-sm shadow-sm sm:-mx-6 sm:px-6">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search trees..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-600"
+                />
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -518,7 +520,7 @@ const Home = () => {
           </div>
 
           {/* Quick Stats */}
-          <div className="rounded-lg border border-gray-200 bg-white p-4 lg:sticky lg:top-24">
+          <div className="hidden md:block rounded-lg border border-gray-200 bg-white p-4 lg:sticky lg:top-24">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h2>
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex justify-between">
