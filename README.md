@@ -4,6 +4,39 @@ This project now includes a FastAPI backend with persistent storage and a React 
 
 ---
 
+## Quick start (single command)
+
+If you want to skip the manual backend/frontend setup steps, run the bundled
+`start_project.sh` helper from the repository root:
+
+```bash
+chmod +x start_project.sh   # first time only, makes the script executable
+./start_project.sh
+```
+
+The script will install backend and frontend dependencies, create
+`backend/.venv`, copy `.env.example` to `.env.local` when missing, and then
+launch both the FastAPI API (`http://localhost:8000`) and the Vite dev server
+(`http://localhost:5173`) bound to `0.0.0.0`. Press **Ctrl+C** when you are
+finished to stop both processes.
+
+To test on another device (e.g., your phone) while the script is running,
+export your computer's LAN IP before execution so the terminal prints the
+external URL:
+
+```bash
+HOST_IP=192.168.1.42 ./start_project.sh
+```
+
+Update `.env.local` so `VITE_API_BASE_URL` points to the same IP address if you
+have not already. Devices on the same network can then open
+`http://<your-ip>:5173` in a browser and use the app normally.
+
+You can re-run the script anytime; it is idempotent and simply restarts the
+servers after ensuring dependencies are installed.
+
+---
+
 ## Prerequisites
 
 Make sure the following tools are installed:
