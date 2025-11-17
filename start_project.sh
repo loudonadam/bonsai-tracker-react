@@ -21,7 +21,7 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR"
-PYTHON_BIN=${PYTHON_BIN:-python3}
+PYTHON_BIN=${PYTHON_BIN:-}
 HOST_IP=${HOST_IP:-}
 
 API_BASE_URL_OVERRIDE=""
@@ -29,11 +29,42 @@ if [ -n "$HOST_IP" ] && [ -z "${VITE_API_BASE_URL:-}" ]; then
   API_BASE_URL_OVERRIDE="http://$HOST_IP:8000/api"
 fi
 
+PYTHON_CMD=()
+
+select_python() {
+  if [ -n "$PYTHON_BIN" ]; then
+    if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+      PYTHON_CMD=("$PYTHON_BIN")
+      return
+    fi
+    echo "Error: Could not find Python executable '$PYTHON_BIN'. Set PYTHON_BIN to a valid command." >&2
+    exit 1
+  fi
+
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      PYTHON_CMD=("$candidate")
+      return
+    fi
+  done
+
+  if command -v py >/dev/null 2>&1; then
+    # Prefer Python 3 when invoking the Windows py launcher.
+    PYTHON_CMD=(py -3)
+    return
+  fi
+
+  echo "Error: Could not find a Python 3 interpreter. Install Python 3.11+ or set PYTHON_BIN to point to it." >&2
+  exit 1
+}
+
+select_python
+
 update_env_file() {
   local file="$1"
   local key="$2"
   local value="$3"
-  "$PYTHON_BIN" - "$file" "$key" "$value" <<'PY'
+  "${PYTHON_CMD[@]}" - "$file" "$key" "$value" <<'PY'
 import sys
 from pathlib import Path
 
@@ -59,11 +90,6 @@ path.write_text("\n".join(lines) + ("\n" if lines else ""))
 PY
 }
 
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Error: Could not find Python executable '$PYTHON_BIN'. Set PYTHON_BIN to override." >&2
-  exit 1
-fi
-
 if ! command -v npm >/dev/null 2>&1; then
   echo "Error: npm is required but was not found in PATH." >&2
   exit 1
@@ -73,7 +99,7 @@ pushd "$BACKEND_DIR" >/dev/null
 
 if [ ! -d .venv ]; then
   echo "Creating Python virtual environment in backend/.venv"
-  "$PYTHON_BIN" -m venv .venv
+  "${PYTHON_CMD[@]}" -m venv .venv
 fi
 
 VENV_BIN_DIR=".venv/bin"
