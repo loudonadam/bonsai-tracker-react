@@ -24,6 +24,41 @@ FRONTEND_DIR="$ROOT_DIR"
 PYTHON_BIN=${PYTHON_BIN:-python3}
 HOST_IP=${HOST_IP:-}
 
+API_BASE_URL_OVERRIDE=""
+if [ -n "$HOST_IP" ] && [ -z "${VITE_API_BASE_URL:-}" ]; then
+  API_BASE_URL_OVERRIDE="http://$HOST_IP:8000/api"
+fi
+
+update_env_file() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  "$PYTHON_BIN" - "$file" "$key" "$value" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+
+lines = []
+if path.exists():
+    lines = path.read_text().splitlines()
+
+updated = False
+for index, line in enumerate(lines):
+    if line.startswith(f"{key}="):
+        lines[index] = f"{key}={value}"
+        updated = True
+        break
+
+if not updated:
+    lines.append(f"{key}={value}")
+
+path.write_text("\n".join(lines) + ("\n" if lines else ""))
+PY
+}
+
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "Error: Could not find Python executable '$PYTHON_BIN'. Set PYTHON_BIN to override." >&2
   exit 1
@@ -84,6 +119,17 @@ if [ ! -f .env.local ] && [ -f .env.example ]; then
   echo "Update .env.local to point VITE_API_BASE_URL to the machine's LAN IP if needed."
 fi
 
+if [ -n "$API_BASE_URL_OVERRIDE" ]; then
+  ENV_FILE="$FRONTEND_DIR/.env.local"
+  if [ ! -f "$ENV_FILE" ] && [ -f "$FRONTEND_DIR/.env.example" ]; then
+    cp "$FRONTEND_DIR/.env.example" "$ENV_FILE"
+  fi
+  if [ -f "$ENV_FILE" ]; then
+    echo "Setting VITE_API_BASE_URL to $API_BASE_URL_OVERRIDE for this session"
+    update_env_file "$ENV_FILE" "VITE_API_BASE_URL" "$API_BASE_URL_OVERRIDE"
+  fi
+fi
+
 popd >/dev/null
 
 BACKEND_UVICORN="$BACKEND_DIR/$VENV_BIN_DIR/uvicorn"
@@ -93,6 +139,11 @@ fi
 
 BACKEND_CMD=("$BACKEND_UVICORN" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
 FRONTEND_CMD=("npm" "run" "dev" "--" "--host" "0.0.0.0" "--port" "5173")
+
+FRONTEND_ENV_PREFIX=()
+if [ -n "$API_BASE_URL_OVERRIDE" ]; then
+  FRONTEND_ENV_PREFIX=(env "VITE_API_BASE_URL=$API_BASE_URL_OVERRIDE")
+fi
 
 # Fallback if uvicorn is not in the virtualenv bin yet (e.g., first install failed)
 if [ ! -x "${BACKEND_CMD[0]}" ]; then
@@ -130,7 +181,11 @@ popd >/dev/null
 pushd "$FRONTEND_DIR" >/dev/null
 
 echo "Starting Vite dev server..."
-"${FRONTEND_CMD[@]}" &
+if [ ${#FRONTEND_ENV_PREFIX[@]} -gt 0 ]; then
+  "${FRONTEND_ENV_PREFIX[@]}" "${FRONTEND_CMD[@]}" &
+else
+  "${FRONTEND_CMD[@]}" &
+fi
 FRONTEND_PID=$!
 
 popd >/dev/null
