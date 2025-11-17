@@ -46,6 +46,16 @@ if [ ! -d "$VENV_BIN_DIR" ] && [ -d ".venv/Scripts" ]; then
   VENV_BIN_DIR=".venv/Scripts"
 fi
 
+VENV_PYTHON="$VENV_BIN_DIR/python"
+if [ ! -x "$VENV_PYTHON" ] && [ -x "$VENV_PYTHON.exe" ]; then
+  VENV_PYTHON="$VENV_PYTHON.exe"
+fi
+
+if [ ! -x "$VENV_PYTHON" ]; then
+  echo "Error: could not find Python executable inside the virtualenv at $VENV_PYTHON" >&2
+  exit 1
+fi
+
 ACTIVATE_SCRIPT="$VENV_BIN_DIR/activate"
 if [ ! -f "$ACTIVATE_SCRIPT" ]; then
   echo "Error: could not find virtualenv activation script at $ACTIVATE_SCRIPT" >&2
@@ -57,8 +67,8 @@ source "$ACTIVATE_SCRIPT"
 
 if [ -f requirements.txt ]; then
   echo "Installing backend dependencies"
-  pip install --upgrade pip >/dev/null
-  pip install -r requirements.txt
+  "$VENV_PYTHON" -m pip install --upgrade pip >/dev/null
+  "$VENV_PYTHON" -m pip install -r requirements.txt
 fi
 
 popd >/dev/null
@@ -86,7 +96,7 @@ FRONTEND_CMD=("npm" "run" "dev" "--" "--host" "0.0.0.0" "--port" "5173")
 
 # Fallback if uvicorn is not in the virtualenv bin yet (e.g., first install failed)
 if [ ! -x "${BACKEND_CMD[0]}" ]; then
-  BACKEND_CMD=("$PYTHON_BIN" "-m" "uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
+  BACKEND_CMD=("$VENV_PYTHON" "-m" "uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
 fi
 
 cleanup() {
