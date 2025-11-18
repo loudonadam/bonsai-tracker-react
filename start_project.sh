@@ -238,4 +238,8 @@ echo
 echo "$HOST_MESSAGE"
 echo "Press Ctrl+C to stop both servers."
 
-tail --pid="$FRONTEND_PID" -f /dev/null
+# Keep the script alive as long as the frontend process is running. Using
+# `wait` keeps this cross-platform (GNU tail's --pid flag is not available in
+# Git Bash on Windows, which previously caused the script to exit immediately
+# and tear down both servers).
+wait "$FRONTEND_PID" || true
