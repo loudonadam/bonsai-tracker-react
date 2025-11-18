@@ -35,6 +35,32 @@ have not already. Devices on the same network can then open
 You can re-run the script anytime; it is idempotent and simply restarts the
 servers after ensuring dependencies are installed.
 
+### Step-by-step on Windows (Git Bash)
+
+1. Install [Git for Windows](https://git-scm.com/download/win) if you have not
+   already and launch **Git Bash** from the Start Menu.
+2. Navigate to the project root, e.g. `cd ~/Desktop/bonsai-tracker-react`.
+3. Make the helper executable the first time you clone the repo:
+   ```bash
+   chmod +x start_project.sh
+   ```
+4. (Optional) find your LAN IP (e.g., via `ipconfig`) so other devices can reach
+   the dev server, then run the script in the same terminal:
+   ```bash
+   HOST_IP=192.168.86.249 ./start_project.sh
+   ```
+   Leave the terminal window open. The script will create `backend/.venv`,
+   install Python/Node dependencies, and copy `.env.example` to `.env.local` the
+   first time it runs. Whenever `HOST_IP` is provided, it also injects
+   `VITE_API_BASE_URL=http://<HOST_IP>:8000/api` into `.env.local` so the React
+   app and your phone/tablet all talk to the same FastAPI instance.
+5. Wait for the banner that prints both `http://localhost:5173` and the
+   network URL (`http://<HOST_IP>:5173`). Open either address from your desktop
+   browser (and the network URL from other devices). Hot reload works the same
+   as on macOS/Linux.
+6. Keep Git Bash running. When you are done, press **Ctrl+C** once in that
+   window; the script traps the signal and stops both FastAPI and Vite cleanly.
+
 ---
 
 ## Prerequisites

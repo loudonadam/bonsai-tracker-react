@@ -24,6 +24,13 @@ FRONTEND_DIR="$ROOT_DIR"
 PYTHON_BIN=${PYTHON_BIN:-}
 HOST_IP=${HOST_IP:-}
 
+TASKLIST_CMD=""
+if command -v tasklist.exe >/dev/null 2>&1; then
+  TASKLIST_CMD="tasklist.exe"
+elif command -v tasklist >/dev/null 2>&1; then
+  TASKLIST_CMD="tasklist"
+fi
+
 API_BASE_URL_OVERRIDE=""
 if [ -n "$HOST_IP" ] && [ -z "${VITE_API_BASE_URL:-}" ]; then
   API_BASE_URL_OVERRIDE="http://$HOST_IP:8000/api"
@@ -251,9 +258,28 @@ echo "Press Ctrl+C to stop both servers."
 # is unable to `wait` on those children and returns immediately, which means
 # this script would exit and kill both servers right after they launched.
 #
-# To avoid that, we try a normal `wait` first and fall back to polling with
-# `ps`/`sleep` when Bash reports that the PID is "not a child" but the process
-# is still alive.
+# To avoid that, we try a normal `wait` first and fall back to polling using
+# either `ps` (POSIX) or `tasklist.exe` (Windows) when Bash reports that the PID
+# is "not a child" but the process is still alive.
+pid_is_running() {
+  local pid="$1"
+  if [ -z "$pid" ]; then
+    return 1
+  fi
+
+  if ps -p "$pid" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ -n "$TASKLIST_CMD" ]; then
+    if "$TASKLIST_CMD" /FI "PID eq $pid" | grep -qv "INFO: No tasks"; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 wait_for_process() {
   local pid="$1"
   if [ -z "$pid" ]; then
@@ -266,8 +292,9 @@ wait_for_process() {
 
   # Fall back to polling for shells (notably Git Bash) that cannot wait on the
   # spawned frontend because it is a native Windows process.
-  if ps -p "$pid" >/dev/null 2>&1; then
-    while ps -p "$pid" >/dev/null 2>&1; do
+  if pid_is_running "$pid"; then
+    echo "Git Bash can't wait on PID $pid directly; falling back to polling."
+    while pid_is_running "$pid"; do
       sleep 1
     done
   fi
