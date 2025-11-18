@@ -244,8 +244,35 @@ echo
 echo "$HOST_MESSAGE"
 echo "Press Ctrl+C to stop both servers."
 
-# Keep the script alive as long as the frontend process is running. Using
-# `wait` keeps this cross-platform (GNU tail's --pid flag is not available in
-# Git Bash on Windows, which previously caused the script to exit immediately
-# and tear down both servers).
-wait "$FRONTEND_PID" || true
+# Keep the script alive as long as the frontend process is running.
+#
+# On Linux/macOS, `wait` is enough. Under Git Bash on Windows, though, the
+# frontend process may be a native Win32 executable (e.g., npx/vite.cmd). Bash
+# is unable to `wait` on those children and returns immediately, which means
+# this script would exit and kill both servers right after they launched.
+#
+# To avoid that, we try a normal `wait` first and fall back to polling with
+# `ps`/`sleep` when Bash reports that the PID is "not a child" but the process
+# is still alive.
+wait_for_process() {
+  local pid="$1"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+
+  if wait "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  # Fall back to polling for shells (notably Git Bash) that cannot wait on the
+  # spawned frontend because it is a native Windows process.
+  if ps -p "$pid" >/dev/null 2>&1; then
+    while ps -p "$pid" >/dev/null 2>&1; do
+      sleep 1
+    done
+  fi
+
+  return 0
+}
+
+wait_for_process "$FRONTEND_PID"
