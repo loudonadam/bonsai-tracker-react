@@ -287,6 +287,16 @@ wait_for_process() {
   fi
 
   if wait "$pid" 2>/dev/null; then
+    # Git Bash sometimes "waits" on the MSYS shim (which exits immediately)
+    # while the spawned Windows binary keeps running. Double-check that the
+    # PID is truly gone before returning so we don't tear everything down
+    # right after startup.
+    if pid_is_running "$pid"; then
+      echo "Git Bash reported PID $pid exited but it is still running; polling until it stops."
+      while pid_is_running "$pid"; do
+        sleep 1
+      done
+    fi
     return 0
   fi
 
