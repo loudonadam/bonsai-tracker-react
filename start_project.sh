@@ -182,7 +182,13 @@ if [ ! -x "$BACKEND_UVICORN" ] && [ -x "$BACKEND_UVICORN.exe" ]; then
 fi
 
 BACKEND_CMD=("$BACKEND_UVICORN" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
-FRONTEND_CMD=("npm" "run" "dev" "--" "--host" "0.0.0.0" "--port" "5173")
+FRONTEND_BIN_REL="node_modules/.bin/vite"
+FRONTEND_BIN="$FRONTEND_DIR/$FRONTEND_BIN_REL"
+if [ -x "$FRONTEND_BIN" ]; then
+  FRONTEND_CMD=("./$FRONTEND_BIN_REL" "dev" "--host" "0.0.0.0" "--port" "5173")
+else
+  FRONTEND_CMD=("npx" "vite" "dev" "--host" "0.0.0.0" "--port" "5173")
+fi
 
 FRONTEND_ENV_PREFIX=()
 if [ -n "$API_BASE_URL_OVERRIDE" ]; then
