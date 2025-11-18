@@ -31,30 +31,48 @@ fi
 
 PYTHON_CMD=()
 
+try_python_command() {
+  local -a cmd=("$@")
+  if [ ${#cmd[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  if ! command -v "${cmd[0]}" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if "${cmd[@]}" -c "import sys" >/dev/null 2>&1; then
+    PYTHON_CMD=("${cmd[@]}")
+    return 0
+  fi
+
+  return 1
+}
+
 select_python() {
   if [ -n "$PYTHON_BIN" ]; then
-    if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-      PYTHON_CMD=("$PYTHON_BIN")
+    if try_python_command "$PYTHON_BIN"; then
       return
     fi
-    echo "Error: Could not find Python executable '$PYTHON_BIN'. Set PYTHON_BIN to a valid command." >&2
+    echo "Error: Could not run Python executable '$PYTHON_BIN'. Set PYTHON_BIN to a valid command." >&2
     exit 1
   fi
 
   for candidate in python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-      PYTHON_CMD=("$candidate")
+    if try_python_command "$candidate"; then
       return
     fi
   done
 
-  if command -v py >/dev/null 2>&1; then
-    # Prefer Python 3 when invoking the Windows py launcher.
-    PYTHON_CMD=(py -3)
+  if try_python_command py -3; then
     return
   fi
 
-  echo "Error: Could not find a Python 3 interpreter. Install Python 3.11+ or set PYTHON_BIN to point to it." >&2
+  if try_python_command py; then
+    return
+  fi
+
+  echo "Error: Could not find a working Python 3 interpreter. Install Python 3.11+ or set PYTHON_BIN to point to it." >&2
   exit 1
 }
 
