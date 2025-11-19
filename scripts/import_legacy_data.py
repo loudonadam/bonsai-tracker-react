@@ -522,13 +522,18 @@ def main() -> None:
     media_root.mkdir(parents=True, exist_ok=True)
 
     with legacy_session_maker() as legacy_session, target_session_maker() as target_session:
-        legacy_trees = legacy_session.execute(
-            select(LegacyTree).options(
-                joinedload(LegacyTree.species_info),
-                joinedload(LegacyTree.updates),
-                joinedload(LegacyTree.photos),
+        legacy_trees = (
+            legacy_session.execute(
+                select(LegacyTree).options(
+                    joinedload(LegacyTree.species_info),
+                    joinedload(LegacyTree.updates),
+                    joinedload(LegacyTree.photos),
+                )
             )
-        ).scalars().all()
+            .unique()
+            .scalars()
+            .all()
+        )
 
         totals = defaultdict(int)
         for legacy_tree in legacy_trees:
