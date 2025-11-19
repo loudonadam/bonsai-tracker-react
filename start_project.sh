@@ -33,9 +33,18 @@ to_native_path() {
   local path="$1"
   if [ -n "$CYGPATH_CMD" ]; then
     "$CYGPATH_CMD" -m "$path"
-  else
-    printf '%s' "$path"
+    return
   fi
+
+  # Handle Git Bash style /c/Users/... paths when cygpath is unavailable.
+  if [[ "$path" =~ ^/([a-zA-Z])/(.*)$ ]]; then
+    local drive_letter="${BASH_REMATCH[1]}"
+    local remainder="${BASH_REMATCH[2]}"
+    printf '%s:/%s' "${drive_letter^^}" "$remainder"
+    return
+  fi
+
+  printf '%s' "$path"
 }
 
 TASKLIST_CMD=""
