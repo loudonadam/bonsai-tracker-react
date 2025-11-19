@@ -26,6 +26,19 @@ function npmCommand() {
   return isWindows ? 'npm.cmd' : 'npm';
 }
 
+function withWindowsShell(command, args) {
+  if (!isWindows) {
+    return { command, args };
+  }
+
+  // CreateProcess cannot spawn shell builtins like npm.cmd directly from Git Bash.
+  // Dispatch through cmd.exe so Windows resolves the .cmd shim reliably.
+  return {
+    command: 'cmd.exe',
+    args: ['/c', command, ...args],
+  };
+}
+
 function forwardOutput(label, child) {
   child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[${label}] ${chunk}`);
@@ -60,7 +73,8 @@ function spawnFrontend() {
   if (apiBaseUrl) {
     env.VITE_API_BASE_URL = apiBaseUrl;
   }
-  const proc = spawn(npmCommand(), args, {
+  const { command, args: spawnArgs } = withWindowsShell(npmCommand(), args);
+  const proc = spawn(command, spawnArgs, {
     cwd: ROOT_DIR,
     stdio: ['inherit', 'pipe', 'pipe'],
     env,
