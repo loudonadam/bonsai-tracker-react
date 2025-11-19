@@ -17,20 +17,18 @@ chmod +x start_project.sh   # first time only, makes the script executable
 The script will install backend and frontend dependencies, create
 `backend/.venv`, copy `.env.example` to `.env.local` when missing, and then
 launch both the FastAPI API (`http://localhost:8000`) and the Vite dev server
-(`http://localhost:5173`) bound to `0.0.0.0`. Press **Ctrl+C** when you are
-finished to stop both processes.
-
-To test on another device (e.g., your phone) while the script is running,
-export your computer's LAN IP before execution so the terminal prints the
-external URL:
+(`http://localhost:5173`) bound to `0.0.0.0`. It now attempts to detect your
+LAN IP automatically so the console prints the shareable URL and `.env.local`
+gets an updated `VITE_API_BASE_URL`. If automatic detection fails (or you want
+to override the address), export `HOST_IP` before launching:
 
 ```bash
 HOST_IP=192.168.1.42 ./start_project.sh
 ```
 
-Update `.env.local` so `VITE_API_BASE_URL` points to the same IP address if you
-have not already. Devices on the same network can then open
-`http://<your-ip>:5173` in a browser and use the app normally.
+Devices on the same network can then open `http://<your-ip>:5173` in a browser
+and use the app normally. Press **Ctrl+C** when you are finished to stop both
+processes.
 
 You can re-run the script anytime; it is idempotent and simply restarts the
 servers after ensuring dependencies are installed.
@@ -44,14 +42,17 @@ servers after ensuring dependencies are installed.
    ```bash
    chmod +x start_project.sh
    ```
-4. (Optional) find your LAN IP (e.g., via `ipconfig`) so other devices can reach
-   the dev server, then run the script in the same terminal:
+4. The script will try to auto-detect your LAN IP so phones/tablets on the same
+   Wi-Fi can reach the dev server. If it cannot determine the correct address or
+   you need to override it, set `HOST_IP` explicitly and run the script in the
+   same terminal:
    ```bash
    HOST_IP=192.168.86.249 ./start_project.sh
    ```
    Leave the terminal window open. The script will create `backend/.venv`,
    install Python/Node dependencies, and copy `.env.example` to `.env.local` the
-   first time it runs. Whenever `HOST_IP` is provided, it also injects
+   first time it runs. Whenever an IP address is available (auto-detected or
+   supplied via `HOST_IP`), the helper injects
    `VITE_API_BASE_URL=http://<HOST_IP>:8000/api` into `.env.local` so the React
    app and your phone/tablet all talk to the same FastAPI instance.
 5. Wait for the banner that prints both `http://localhost:5173` and the

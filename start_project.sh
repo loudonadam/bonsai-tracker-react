@@ -48,6 +48,42 @@ run_python() {
   fi
 }
 
+detect_host_ip() {
+  if [ -n "$HOST_IP" ]; then
+    return
+  fi
+
+  HOST_IP=$(run_python - <<'PY' || true)
+import socket
+
+def resolve_ip():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        pass
+
+    try:
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        if ip and not ip.startswith("127."):
+            return ip
+    except OSError:
+        pass
+
+    return ""
+
+ip = resolve_ip()
+if ip:
+    print(ip)
+PY
+
+  if [ -n "$HOST_IP" ]; then
+    echo "Detected local IP address: $HOST_IP"
+  fi
+}
+
 ensure_backend() {
   pushd "$BACKEND_DIR" >/dev/null
 
@@ -117,6 +153,7 @@ PY
   popd >/dev/null
 }
 
+detect_host_ip
 ensure_backend
 ensure_frontend
 
