@@ -499,7 +499,11 @@ def _build_notes(legacy_tree: LegacyTree) -> Optional[str]:
 
 
 def _refresh_species_counts(session: Session) -> None:
-    counts = dict(session.execute(select(Bonsai.species_id, func.count(Bonsai.id)).group_by(Bonsai.species_id)))
+    counts = dict(
+        session.execute(
+            select(Bonsai.species_id, func.count(Bonsai.id)).group_by(Bonsai.species_id)
+        ).all()
+    )
     for species in session.scalars(select(Species)).all():
         species.tree_count = counts.get(species.id, 0)
 
