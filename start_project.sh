@@ -197,9 +197,9 @@ else
   FRONTEND_CMD=("npx" "vite" "dev" "--host" "0.0.0.0" "--port" "5173")
 fi
 
-FRONTEND_ENV_PREFIX=()
+FRONTEND_ENV_ARGS=()
 if [ -n "$API_BASE_URL_OVERRIDE" ]; then
-  FRONTEND_ENV_PREFIX=(env "VITE_API_BASE_URL=$API_BASE_URL_OVERRIDE")
+  FRONTEND_ENV_ARGS=("--frontend-env" "VITE_API_BASE_URL=$API_BASE_URL_OVERRIDE")
 fi
 
 # Fallback if uvicorn is not in the virtualenv bin yet (e.g., first install failed)
@@ -207,109 +207,36 @@ if [ ! -x "${BACKEND_CMD[0]}" ]; then
   BACKEND_CMD=("$VENV_PYTHON" "-m" "uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
 fi
 
-cleanup() {
-  echo "\nStopping development servers..."
-  if [ -n "${BACKEND_PID:-}" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
-    kill "$BACKEND_PID"
-    wait "$BACKEND_PID" 2>/dev/null || true
-  fi
-  if [ -n "${FRONTEND_PID:-}" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
-    kill "$FRONTEND_PID"
-    wait "$FRONTEND_PID" 2>/dev/null || true
-  fi
-}
-
-trap cleanup EXIT INT TERM
-
-pushd "$BACKEND_DIR" >/dev/null
-
 if [ -z "$HOST_IP" ]; then
   HOST_MESSAGE="Access the app on this machine at http://localhost:5173"
 else
   HOST_MESSAGE="Access the app from another device at http://$HOST_IP:5173"
 fi
 
-echo "Starting FastAPI backend..."
-"${BACKEND_CMD[@]}" &
-BACKEND_PID=$!
+serialize_cmd_array() {
+  local -n arr_ref="$1"
+  if [ ${#arr_ref[@]} -eq 0 ]; then
+    printf ''
+    return
+  fi
+  printf '%s\0' "${arr_ref[@]}" | base64 | tr -d '\n'
+}
 
-popd >/dev/null
+BACKEND_CMD_B64=$(serialize_cmd_array BACKEND_CMD)
+FRONTEND_CMD_B64=$(serialize_cmd_array FRONTEND_CMD)
 
-pushd "$FRONTEND_DIR" >/dev/null
+SUPERVISOR_SCRIPT="$ROOT_DIR/scripts/dev_supervisor.py"
 
-echo "Starting Vite dev server..."
-if [ ${#FRONTEND_ENV_PREFIX[@]} -gt 0 ]; then
-  "${FRONTEND_ENV_PREFIX[@]}" "${FRONTEND_CMD[@]}" &
-else
-  "${FRONTEND_CMD[@]}" &
+SUPERVISOR_ARGS=(
+  --backend-cmd-b64 "$BACKEND_CMD_B64"
+  --backend-cwd "$BACKEND_DIR"
+  --frontend-cmd-b64 "$FRONTEND_CMD_B64"
+  --frontend-cwd "$FRONTEND_DIR"
+  --host-message "$HOST_MESSAGE"
+)
+
+if [ ${#FRONTEND_ENV_ARGS[@]} -gt 0 ]; then
+  SUPERVISOR_ARGS+=("${FRONTEND_ENV_ARGS[@]}")
 fi
-FRONTEND_PID=$!
 
-popd >/dev/null
-
-echo
-echo "$HOST_MESSAGE"
-echo "Press Ctrl+C to stop both servers."
-
-# Keep the script alive as long as the frontend process is running.
-#
-# On Linux/macOS, `wait` is enough. Under Git Bash on Windows, though, the
-# frontend process may be a native Win32 executable (e.g., npx/vite.cmd). Bash
-# is unable to `wait` on those children and returns immediately, which means
-# this script would exit and kill both servers right after they launched.
-#
-# To avoid that, we try a normal `wait` first and fall back to polling using
-# either `ps` (POSIX) or `tasklist.exe` (Windows) when Bash reports that the PID
-# is "not a child" but the process is still alive.
-pid_is_running() {
-  local pid="$1"
-  if [ -z "$pid" ]; then
-    return 1
-  fi
-
-  if ps -p "$pid" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if [ -n "$TASKLIST_CMD" ]; then
-    if "$TASKLIST_CMD" /FI "PID eq $pid" | grep -qv "INFO: No tasks"; then
-      return 0
-    fi
-  fi
-
-  return 1
-}
-
-wait_for_process() {
-  local pid="$1"
-  if [ -z "$pid" ]; then
-    return 0
-  fi
-
-  if wait "$pid" 2>/dev/null; then
-    # Git Bash sometimes "waits" on the MSYS shim (which exits immediately)
-    # while the spawned Windows binary keeps running. Double-check that the
-    # PID is truly gone before returning so we don't tear everything down
-    # right after startup.
-    if pid_is_running "$pid"; then
-      echo "Git Bash reported PID $pid exited but it is still running; polling until it stops."
-      while pid_is_running "$pid"; do
-        sleep 1
-      done
-    fi
-    return 0
-  fi
-
-  # Fall back to polling for shells (notably Git Bash) that cannot wait on the
-  # spawned frontend because it is a native Windows process.
-  if pid_is_running "$pid"; then
-    echo "Git Bash can't wait on PID $pid directly; falling back to polling."
-    while pid_is_running "$pid"; do
-      sleep 1
-    done
-  fi
-
-  return 0
-}
-
-wait_for_process "$FRONTEND_PID"
+"${PYTHON_CMD[@]}" "$SUPERVISOR_SCRIPT" "${SUPERVISOR_ARGS[@]}"
