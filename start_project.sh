@@ -7,6 +7,12 @@ FRONTEND_DIR="$ROOT_DIR"
 HOST_IP=${HOST_IP:-}
 PYTHON_BIN=${PYTHON_BIN:-}
 
+case "${OSTYPE:-}" in
+  msys* | cygwin* | win32*)
+    set -o igncr 2>/dev/null || true
+    ;;
+esac
+
 if ! command -v npm >/dev/null 2>&1; then
   echo "Error: npm is required but was not found in PATH." >&2
   exit 1
@@ -14,7 +20,7 @@ fi
 
 find_python() {
   if [ -n "$PYTHON_BIN" ]; then
-    if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    if command -v "$PYTHON_BIN" >/dev/null 2>&1 && "$PYTHON_BIN" -c "import sys" >/dev/null 2>&1; then
       echo "$PYTHON_BIN"
       return
     fi
@@ -23,24 +29,30 @@ find_python() {
   fi
 
   for candidate in python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1; then
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import sys" >/dev/null 2>&1; then
       echo "$candidate"
       return
     fi
   done
 
   if command -v py >/dev/null 2>&1; then
-    echo "py -3"
-    return
+    if py -3 -c "import sys" >/dev/null 2>&1; then
+      echo "py -3"
+      return
+    fi
   fi
 
   echo "Error: Could not locate a Python interpreter (3.11+). Install Python or set PYTHON_BIN." >&2
   exit 1
 }
 
-PYTHON_CMD=$(find_python)
+PYTHON_CMD=""
 
 run_python() {
+  if [ -z "$PYTHON_CMD" ]; then
+    PYTHON_CMD=$(find_python)
+  fi
+
   if [[ "$PYTHON_CMD" == "py -3" ]]; then
     py -3 "$@"
   else
@@ -140,27 +152,39 @@ ensure_frontend() {
     fi
     if [ -f "$env_file" ]; then
       echo "Updating VITE_API_BASE_URL to http://$HOST_IP:8000/api"
-      run_python - "$env_file" "$HOST_IP" <<'PY'
-import sys
-from pathlib import Path
+      node - "$env_file" "$HOST_IP" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
 
-file_path = Path(sys.argv[1])
-key = "VITE_API_BASE_URL"
-value = f"http://{sys.argv[2]}:8000/api"
+const [envPath, hostIp] = process.argv.slice(2);
+const resolvedPath = path.resolve(envPath);
+const key = 'VITE_API_BASE_URL';
+const value = `http://${hostIp}:8000/api`;
 
-lines = []
-if file_path.exists():
-    lines = file_path.read_text().splitlines()
+let lines = [];
+if (fs.existsSync(resolvedPath)) {
+  lines = fs.readFileSync(resolvedPath, 'utf8').replace(/\r\n/g, '\n').split('\n');
+  if (lines.length && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+}
 
-for idx, line in enumerate(lines):
-    if line.startswith(f"{key}="):
-        lines[idx] = f"{key}={value}"
-        break
-else:
-    lines.append(f"{key}={value}")
+let updated = false;
+lines = lines.map((line) => {
+  if (!updated && line.startsWith(`${key}=`)) {
+    updated = true;
+    return `${key}=${value}`;
+  }
+  return line;
+});
 
-file_path.write_text("\n".join(lines) + ("\n" if lines else ""))
-PY
+if (!updated) {
+  lines.push(`${key}=${value}`);
+}
+
+const nextContent = `${lines.join('\n')}${lines.length ? '\n' : ''}`;
+fs.writeFileSync(resolvedPath, nextContent);
+NODE
     fi
   fi
 
