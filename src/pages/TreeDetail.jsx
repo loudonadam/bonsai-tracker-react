@@ -2156,14 +2156,39 @@ const TreeDetail = () => {
         <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
           <div className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                onClick={() => navigate('/')}
-                className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-gray-900"
-              >
-                <ArrowLeft className="h-5 w-5" />
-                <span>Back to Collection</span>
-              </button>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <div className="flex items-center justify-between gap-3 sm:w-auto">
+                <button
+                  onClick={() => navigate('/')}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-gray-900"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                  <span>Back to Collection</span>
+                </button>
+                <div className="flex items-center gap-1.5 sm:hidden">
+                  <button
+                    onClick={handleExportTree}
+                    aria-label="Export tree"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 transition hover:bg-gray-50 hover:text-gray-900"
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={openEditModal}
+                    aria-label="Edit tree"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-green-600 text-white shadow-sm transition hover:bg-green-700"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={openMoveToGraveyardModal}
+                    aria-label="Move tree to graveyard"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-gray-700 transition hover:bg-gray-300"
+                  >
+                    <Skull className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="hidden flex-col gap-2 sm:flex sm:flex-row sm:flex-wrap sm:justify-end">
                 <button
                   onClick={handleExportTree}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 sm:w-auto"

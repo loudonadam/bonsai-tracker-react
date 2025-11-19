@@ -47,7 +47,7 @@ const TreeCard = ({
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-green-50 to-green-100">
+      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-green-50 to-green-100 sm:aspect-[4/3]">
         {photoSrc ? (
           <img
             src={photoSrc}
@@ -59,11 +59,19 @@ const TreeCard = ({
             <Camera className="h-14 w-14" strokeWidth={1.5} />
           </div>
         )}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1.5 text-white sm:hidden">
+          <p className="truncate text-xs font-semibold">{tree.name}</p>
+          {tree.species && (
+            <p className="truncate text-[11px] text-white/80">
+              {tree.species}
+            </p>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-1 flex-col p-4">
+      <div className="flex flex-1 flex-col p-2 sm:p-4">
         {/* Tree Name & Species */}
-        <div className="mb-3">
+        <div className="mb-2 hidden sm:block">
           <h3 className="truncate text-lg font-semibold text-gray-800">
             {tree.name}
           </h3>
@@ -73,7 +81,7 @@ const TreeCard = ({
         </div>
 
         {/* Stats Grid */}
-        <div className="space-y-1.5 text-sm text-gray-600">
+        <div className="hidden space-y-1.5 text-sm text-gray-600 sm:block">
           {/* Age */}
           <div className="flex items-center">
             <Calendar className="mr-2 h-4 w-4 text-green-500" />
@@ -101,14 +109,14 @@ const TreeCard = ({
 
         {/* Notes Preview (if present) */}
         {tree.notes && (
-          <div className="mt-2 border-t border-gray-100 pt-2.5">
+          <div className="mt-2 hidden border-t border-gray-100 pt-2.5 sm:block">
             <p className="line-clamp-2 text-xs text-gray-500">
               {tree.notes}
             </p>
           </div>
         )}
 
-        <div className="mt-3 flex items-center justify-end">
+        <div className="mt-3 hidden items-center justify-end sm:flex">
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium shadow-sm ${stageMeta.badgeClasses}`}
             title={stageMeta.label}
