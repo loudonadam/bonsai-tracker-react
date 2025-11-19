@@ -24,6 +24,20 @@ FRONTEND_DIR="$ROOT_DIR"
 PYTHON_BIN=${PYTHON_BIN:-}
 HOST_IP=${HOST_IP:-}
 
+CYGPATH_CMD=""
+if command -v cygpath >/dev/null 2>&1; then
+  CYGPATH_CMD="cygpath"
+fi
+
+to_native_path() {
+  local path="$1"
+  if [ -n "$CYGPATH_CMD" ]; then
+    "$CYGPATH_CMD" -m "$path"
+  else
+    printf '%s' "$path"
+  fi
+}
+
 TASKLIST_CMD=""
 if command -v tasklist.exe >/dev/null 2>&1; then
   TASKLIST_CMD="tasklist.exe"
@@ -188,7 +202,8 @@ if [ ! -x "$BACKEND_UVICORN" ] && [ -x "$BACKEND_UVICORN.exe" ]; then
   BACKEND_UVICORN="$BACKEND_UVICORN.exe"
 fi
 
-BACKEND_CMD=("$BACKEND_UVICORN" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
+BACKEND_UVICORN_NATIVE=$(to_native_path "$BACKEND_UVICORN")
+BACKEND_CMD=("$BACKEND_UVICORN_NATIVE" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
 FRONTEND_BIN_REL="node_modules/.bin/vite"
 FRONTEND_BIN="$FRONTEND_DIR/$FRONTEND_BIN_REL"
 if [ -x "$FRONTEND_BIN" ]; then
@@ -204,7 +219,7 @@ fi
 
 # Fallback if uvicorn is not in the virtualenv bin yet (e.g., first install failed)
 if [ ! -x "${BACKEND_CMD[0]}" ]; then
-  BACKEND_CMD=("$VENV_PYTHON" "-m" "uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
+  BACKEND_CMD=("$(to_native_path "$VENV_PYTHON")" "-m" "uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
 fi
 
 if [ -z "$HOST_IP" ]; then
@@ -226,12 +241,13 @@ BACKEND_CMD_B64=$(serialize_cmd_array BACKEND_CMD)
 FRONTEND_CMD_B64=$(serialize_cmd_array FRONTEND_CMD)
 
 SUPERVISOR_SCRIPT="$ROOT_DIR/scripts/dev_supervisor.py"
+SUPERVISOR_SCRIPT_NATIVE=$(to_native_path "$SUPERVISOR_SCRIPT")
 
 SUPERVISOR_ARGS=(
   --backend-cmd-b64 "$BACKEND_CMD_B64"
-  --backend-cwd "$BACKEND_DIR"
+  --backend-cwd "$(to_native_path "$BACKEND_DIR")"
   --frontend-cmd-b64 "$FRONTEND_CMD_B64"
-  --frontend-cwd "$FRONTEND_DIR"
+  --frontend-cwd "$(to_native_path "$FRONTEND_DIR")"
   --host-message "$HOST_MESSAGE"
 )
 
@@ -239,4 +255,4 @@ if [ ${#FRONTEND_ENV_ARGS[@]} -gt 0 ]; then
   SUPERVISOR_ARGS+=("${FRONTEND_ENV_ARGS[@]}")
 fi
 
-"${PYTHON_CMD[@]}" "$SUPERVISOR_SCRIPT" "${SUPERVISOR_ARGS[@]}"
+"${PYTHON_CMD[@]}" "$SUPERVISOR_SCRIPT_NATIVE" "${SUPERVISOR_ARGS[@]}"
