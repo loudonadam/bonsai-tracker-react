@@ -53,37 +53,68 @@ const shouldMirrorUiHostname = (envHostname, currentHostname) => {
   return isPrivateNetworkHostname(envHostname);
 };
 
-const resolveApiBaseUrl = () => {
+const resolveApiBaseUrls = () => {
   const envBaseUrl = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
   const inferredBaseUrl = sanitizeBaseUrl(inferDefaultBaseUrl());
 
-  if (!envBaseUrl) {
-    return inferredBaseUrl;
+  let primary = envBaseUrl || inferredBaseUrl;
+  if (!primary) {
+    primary = "http://localhost:8000/api";
   }
 
-  if (typeof window !== "undefined" && window.location) {
+  let fallback;
+
+  if (
+    envBaseUrl &&
+    inferredBaseUrl &&
+    typeof window !== "undefined" &&
+    window.location
+  ) {
     try {
       const envUrl = new URL(envBaseUrl, window.location.origin);
       if (shouldMirrorUiHostname(envUrl.hostname, window.location.hostname)) {
-        // A non-local device is loading the UI but Vite was configured with a
-        // different private/LAN hostname (common on Windows with multiple
-        // adapters). Stick with the host that served the UI so phones and
-        // tablets reuse the reachable interface automatically.
-        return inferredBaseUrl;
+        primary = inferredBaseUrl;
+        if (envBaseUrl !== inferredBaseUrl) {
+          fallback = envBaseUrl;
+        }
       }
     } catch {
       /* ignore invalid URLs and fall back to the configured value */
     }
   }
 
-  return envBaseUrl;
+  if (!fallback && inferredBaseUrl && inferredBaseUrl !== primary) {
+    fallback = inferredBaseUrl;
+  }
+
+  if (!fallback && envBaseUrl && envBaseUrl !== primary) {
+    fallback = envBaseUrl;
+  }
+
+  return { primary, fallback };
 };
 
-const API_BASE_URL = resolveApiBaseUrl();
+const { primary, fallback } = resolveApiBaseUrls();
+let activeApiBaseUrl = primary;
+let standbyApiBaseUrl = fallback;
+const isDevEnvironment = Boolean(import.meta.env && import.meta.env.DEV);
 
-async function request(path, options = {}) {
-  const url = `${API_BASE_URL}${path}`;
-  const response = await fetch(url, {
+if (isDevEnvironment) {
+  const fallbackLabel = standbyApiBaseUrl
+    ? ` (fallback: ${standbyApiBaseUrl})`
+    : "";
+  console.info(`[api] Using API base URL: ${activeApiBaseUrl}${fallbackLabel}`);
+}
+
+const isLikelyNetworkError = (error) =>
+  error &&
+  (error.name === "TypeError" ||
+    /Network request failed/i.test(error.message || "") ||
+    /Failed to fetch/i.test(error.message || ""));
+
+const performRequest = async (baseUrl, path, options = {}) => {
+  const url = `${baseUrl}${path}`;
+  return fetch(url, {
     headers: {
       Accept: "application/json",
       ...(options.body instanceof FormData
@@ -92,27 +123,51 @@ async function request(path, options = {}) {
     },
     ...options,
   });
+};
 
-  if (!response.ok) {
-    let errorDetail = `Request failed with status ${response.status}`;
-    try {
-      const data = await response.json();
-      if (data?.detail) {
-        errorDetail = Array.isArray(data.detail)
-          ? data.detail.map((item) => item.msg || item).join(", ")
-          : data.detail;
+async function request(path, options = {}) {
+  const attemptFetch = async () => {
+    const response = await performRequest(activeApiBaseUrl, path, options);
+
+    if (!response.ok) {
+      let errorDetail = `Request failed with status ${response.status}`;
+      try {
+        const data = await response.json();
+        if (data?.detail) {
+          errorDetail = Array.isArray(data.detail)
+            ? data.detail.map((item) => item.msg || item).join(", ")
+            : data.detail;
+        }
+      } catch {
+        /* ignore JSON parsing errors */
       }
-    } catch {
-      /* ignore JSON parsing errors */
+      throw new Error(errorDetail);
     }
-    throw new Error(errorDetail);
-  }
 
-  if (response.status === 204) {
-    return null;
-  }
+    if (response.status === 204) {
+      return null;
+    }
 
-  return response.json();
+    return response.json();
+  };
+
+  try {
+    return await attemptFetch();
+  } catch (error) {
+    if (standbyApiBaseUrl && isLikelyNetworkError(error)) {
+      const previousBaseUrl = activeApiBaseUrl;
+      const nextBaseUrl = standbyApiBaseUrl;
+      standbyApiBaseUrl = null;
+      activeApiBaseUrl = nextBaseUrl;
+      if (isDevEnvironment) {
+        console.warn(
+          `Falling back to ${nextBaseUrl} after network error from ${previousBaseUrl}`
+        );
+      }
+      return attemptFetch();
+    }
+    throw error;
+  }
 }
 
 export const apiClient = {
@@ -143,5 +198,5 @@ export const apiClient = {
 };
 
 export function getApiBaseUrl() {
-  return API_BASE_URL;
+  return activeApiBaseUrl;
 }

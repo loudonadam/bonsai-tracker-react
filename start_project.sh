@@ -53,31 +53,45 @@ detect_host_ip() {
     return
   fi
 
-  HOST_IP=$(run_python - <<'PY' || true)
-import socket
+  HOST_IP=$(node - <<'NODE' 2>/dev/null || true)
+const os = require('node:os');
 
-def resolve_ip():
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect(("8.8.8.8", 80))
-            return sock.getsockname()[0]
-    except OSError:
-        pass
+const interfaces = os.networkInterfaces();
+const candidates = [];
 
-    try:
-        hostname = socket.gethostname()
-        ip = socket.gethostbyname(hostname)
-        if ip and not ip.startswith("127."):
-            return ip
-    except OSError:
-        pass
+for (const entries of Object.values(interfaces)) {
+  for (const entry of entries ?? []) {
+    if (entry.internal || entry.family !== 'IPv4') {
+      continue;
+    }
+    candidates.push(entry.address);
+  }
+}
 
-    return ""
+const prefer = [
+  (ip) => ip.startsWith('192.168.'),
+  (ip) => ip.startsWith('10.'),
+  (ip) => /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip),
+  (ip) => ip && ip !== '127.0.0.1' && ip !== '0.0.0.0',
+];
 
-ip = resolve_ip()
-if ip:
-    print(ip)
-PY
+let result = '';
+for (const matcher of prefer) {
+  const match = candidates.find((ip) => matcher(ip));
+  if (match) {
+    result = match;
+    break;
+  }
+}
+
+if (!result) {
+  result = candidates[0] ?? '';
+}
+
+if (result) {
+  process.stdout.write(result);
+}
+NODE
 
   if [ -n "$HOST_IP" ]; then
     echo "Detected local IP address: $HOST_IP"
