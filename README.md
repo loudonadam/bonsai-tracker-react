@@ -138,6 +138,40 @@ The instructions assume a POSIX shell (macOS/Linux/WSL). Windows PowerShell comm
   - `/api/notifications` for reminders and alerts
 - Every POST/PUT/PATCH call returns the latest state from the database, making it easy to keep the UI in sync.
 
+### Importing data from the legacy app
+
+If you previously used the standalone SQLite app (the one that measured girth in **millimetres**) you can migrate your trees,
+updates, and photos into this project without touching the production code. A stand-alone helper lives at
+`scripts/import_legacy_data.py` and can be invoked from the repository root after you finish the normal backend setup.
+
+```bash
+# Dry run (recommended). Shows how many trees/updates/photos would be imported.
+python scripts/import_legacy_data.py \
+  --legacy-db /path/to/old/bonsai.db \
+  --images-dir /path/to/legacy/images
+
+# Apply the import to the current backend/bonsai.db
+python scripts/import_legacy_data.py \
+  --legacy-db /path/to/old/bonsai.db \
+  --images-dir /path/to/legacy/images \
+  --commit
+```
+
+Key behaviour:
+
+- The script points at `backend/bonsai.db` by default but accepts any SQLAlchemy URL via `--target-db` when you need to import
+  into a different environment.
+- Images are read from the directory you pass to `--images-dir`, re-saved through the same thumbnail pipeline that FastAPI uses,
+  and stored under `backend/var/media/full|thumbs` so the UI loads them exactly like newly uploaded photos.
+- Missing species entries are created automatically (the species name from the legacy database is used as the new `common_name`).
+- Tree girth values recorded in millimetres are converted to centimetres before the corresponding measurement rows are written in
+  the new schema.
+- Imports are idempotent per tree name: if a bonsai with the same name already exists the legacy tree is skipped to prevent
+  duplicates. Delete/rename the existing entry if you intentionally need to re-import it.
+
+By default the helper rolls back its work; append `--commit` once the dry run summary looks correct. You can repeat the process
+as many times as needed while migrating your archive.
+
 ---
 
 ## 2. Frontend setup (React + Vite)
