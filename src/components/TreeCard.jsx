@@ -33,9 +33,31 @@ const TreeCard = ({
     fallbackPhoto?.url ||
     fallbackPhoto?.fullUrl;
 
-  const treeAgeLabel = useMemo(() => calculateAgeInYears(tree.acquisitionDate), [
-    tree.acquisitionDate,
-  ]);
+  const treeAgeYears = useMemo(
+    () => calculateAgeInYears(tree.originDate || tree.acquisitionDate),
+    [tree.originDate, tree.acquisitionDate]
+  );
+
+  const treeAgeLabel = useMemo(() => {
+    if (treeAgeYears === null) {
+      return "Age unknown";
+    }
+    if (treeAgeYears < 1) {
+      return "<1 year old";
+    }
+
+    const roundedAge = Math.round(treeAgeYears);
+    return `${roundedAge} years old`;
+  }, [treeAgeYears]);
+
+  const trunkWidthLabel = useMemo(() => {
+    const girth = Number(tree.currentGirth);
+    if (!Number.isFinite(girth)) {
+      return null;
+    }
+
+    return `${girth.toFixed(1)} cm trunk`;
+  }, [tree.currentGirth]);
 
   const formattedLastUpdate = useMemo(
     () =>
@@ -85,16 +107,14 @@ const TreeCard = ({
           {/* Age */}
           <div className="flex items-center">
             <Calendar className="mr-2 h-4 w-4 text-green-500" />
-            <span>
-              {treeAgeLabel !== null ? `${treeAgeLabel} years old` : "Age unknown"}
-            </span>
+            <span>{treeAgeLabel}</span>
           </div>
 
           {/* Trunk Width */}
-          {tree.currentGirth && (
+          {trunkWidthLabel && (
             <div className="flex items-center">
               <Ruler className="mr-2 h-4 w-4 text-green-500" />
-              <span>{tree.currentGirth} cm trunk width</span>
+              <span>{trunkWidthLabel}</span>
             </div>
           )}
 

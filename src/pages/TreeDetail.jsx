@@ -185,6 +185,7 @@ const TreeDetail = () => {
   const [editData, setEditData] = useState({
     name: mockTreeData.name,
     acquisitionDate: mockTreeData.acquisitionDate,
+    originDate: mockTreeData.originDate ?? "",
     developmentStage: mockTreeData.developmentStage,
     notes: mockTreeData.notes,
   });
@@ -569,7 +570,8 @@ const TreeDetail = () => {
   const openEditModal = () => {
     setEditData({
       name: tree.name,
-      acquisitionDate: tree.acquisitionDate,
+      acquisitionDate: formatInputDate(tree.acquisitionDate),
+      originDate: formatInputDate(tree.originDate),
       developmentStage: tree.developmentStage ?? DEFAULT_STAGE_VALUE,
       notes: tree.notes ?? "",
     });
@@ -615,11 +617,10 @@ const TreeDetail = () => {
   };
 
   const handleEditSave = async () => {
-    if (isSavingEdit) {
+    if (isSavingEdit || !tree?.id) {
       return;
     }
 
-    let speciesName = tree?.species ?? "";
     let speciesId = tree?.speciesId ?? null;
     let selectedSpecies = null;
 
@@ -639,7 +640,6 @@ const TreeDetail = () => {
       }
 
       speciesId = selectedSpecies.id;
-      speciesName = formatSpeciesLabel(selectedSpecies);
     } else {
       const trimmedCommonName = editNewSpecies.commonName.trim();
       if (!trimmedCommonName) {
@@ -659,7 +659,6 @@ const TreeDetail = () => {
           notes: editNewSpecies.notes,
         });
         speciesId = created.id;
-        speciesName = formatSpeciesLabel(created);
         await refreshSpecies();
       }
 
@@ -667,20 +666,24 @@ const TreeDetail = () => {
       const normalizedStage = editData.developmentStage || tree.developmentStage;
       const normalizedAcquisition =
         editData.acquisitionDate || tree.acquisitionDate;
+      const normalizedOrigin = editData.originDate || tree.originDate;
 
-      setTree((prev) => {
-        if (!prev) {
-          return prev;
-        }
-        return {
-          ...prev,
-          name: trimmedName || prev.name,
-          species: speciesName,
-          speciesId,
-          acquisitionDate: normalizedAcquisition,
-          developmentStage: normalizedStage,
-          notes: editData.notes,
-        };
+      const updated = await updateTree(tree.id, {
+        name: trimmedName || tree.name,
+        acquisition_date: normalizedAcquisition || null,
+        origin_date: normalizedOrigin || null,
+        notes: editData.notes ?? "",
+        development_stage: normalizedStage,
+        species_id: speciesId,
+      });
+
+      setTree(updated);
+      setEditData({
+        name: updated.name ?? "",
+        acquisitionDate: formatInputDate(updated.acquisitionDate),
+        originDate: formatInputDate(updated.originDate),
+        developmentStage: updated.developmentStage ?? DEFAULT_STAGE_VALUE,
+        notes: updated.notes ?? "",
       });
 
       closeEditModal();
@@ -3347,6 +3350,20 @@ const TreeDetail = () => {
                     }))
                   }
                   placeholder="Select acquisition date"
+                />
+              </label>
+
+              <label className="flex flex-col text-sm font-medium text-gray-700 gap-1">
+                Origin Date
+                <DatePicker
+                  value={editData.originDate}
+                  onChange={(event) =>
+                    setEditData((prev) => ({
+                      ...prev,
+                      originDate: event.target.value,
+                    }))
+                  }
+                  placeholder="Select origin date"
                 />
               </label>
 
