@@ -54,7 +54,11 @@ servers after ensuring dependencies are installed.
    first time it runs. Whenever an IP address is available (auto-detected or
    supplied via `HOST_IP`), the helper injects
    `VITE_API_BASE_URL=http://<HOST_IP>:8000/api` into `.env.local` so the React
-   app and your phone/tablet all talk to the same FastAPI instance.
+   app and your phone/tablet all talk to the same FastAPI instance. If your
+   computer has multiple adapters (for example Ethernet + Wi-Fi) and a device
+   connects through a different LAN IP than the one detected, the browser will
+   automatically fall back to the host that served the UI so API calls continue
+   to work without touching `.env.local`.
 5. Wait for the banner that prints both `http://localhost:5173` and the
    network URL (`http://<HOST_IP>:5173`). Open either address from your desktop
    browser (and the network URL from other devices). Hot reload works the same
