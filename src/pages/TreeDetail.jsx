@@ -33,6 +33,10 @@ import {
 import { useTrees } from "../context/TreesContext";
 import { extractPhotoDate } from "../utils/photoMetadata";
 import { useSpecies } from "../context/SpeciesContext";
+import {
+  calculateAgeInYears,
+  compareByTimestampDesc,
+} from "../utils/dateUtils";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
@@ -233,26 +237,6 @@ const TreeDetail = () => {
   const hasAttemptedRefreshRef = useRef(false);
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
 
-  const calculateAge = (dateString) => {
-    if (!dateString) {
-      return null;
-    }
-
-    const start = new Date(dateString);
-    const startTimestamp = start.getTime();
-    if (Number.isNaN(startTimestamp)) {
-      return null;
-    }
-
-    const now = new Date();
-    const years = (now.getTime() - startTimestamp) / (1000 * 60 * 60 * 24 * 365.25);
-    if (!Number.isFinite(years)) {
-      return null;
-    }
-
-    return years.toFixed(1);
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) {
       return "Unknown date";
@@ -304,13 +288,31 @@ const TreeDetail = () => {
     [tree.developmentStage]
   );
 
-  const ageYears = calculateAge(tree.acquisitionDate);
-  const ageLabel = ageYears ? `${ageYears} years old` : "Age unknown";
+  const ageYears = useMemo(
+    () => calculateAgeInYears(tree.originDate || tree.acquisitionDate),
+    [tree.originDate, tree.acquisitionDate]
+  );
 
-  const widthLabel =
-    typeof tree.currentGirth === "number" && !Number.isNaN(tree.currentGirth)
-      ? `${tree.currentGirth} cm trunk width`
-      : "Trunk width not recorded";
+  const ageLabel = useMemo(() => {
+    if (ageYears === null) {
+      return "Age unknown";
+    }
+    if (ageYears < 1) {
+      return "<1 year old";
+    }
+
+    const roundedAge = Math.round(ageYears);
+    return `${roundedAge} years old`;
+  }, [ageYears]);
+
+  const widthLabel = useMemo(() => {
+    const girth = Number(tree.currentGirth);
+    if (!Number.isFinite(girth)) {
+      return "Trunk width not recorded";
+    }
+
+    return `${girth.toFixed(1)} cm trunk`;
+  }, [tree.currentGirth]);
 
   const latestUpdate = tree.updates[0];
   const earliestUpdate = tree.updates[tree.updates.length - 1];
@@ -331,7 +333,13 @@ const TreeDetail = () => {
 
   const photoEntries = useMemo(() => {
     if (Array.isArray(tree.photos) && tree.photos.length > 0) {
-      return tree.photos;
+      return [...tree.photos].sort((a, b) =>
+        compareByTimestampDesc(
+          a,
+          b,
+          (photo) => photo.takenAt ?? photo.date ?? photo.createdAt ?? photo.updatedAt ?? null
+        )
+      );
     }
 
     const fallbackUrl = tree.photoUrl || tree.fullPhotoUrl || null;
