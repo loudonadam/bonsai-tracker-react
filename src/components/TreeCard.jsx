@@ -69,7 +69,7 @@ const TreeCard = ({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col p-2 sm:p-4">
+      <div className="hidden flex-1 flex-col p-2 sm:flex sm:p-4">
         {/* Tree Name & Species */}
         <div className="mb-2 hidden sm:block">
           <h3 className="truncate text-lg font-semibold text-gray-800">
