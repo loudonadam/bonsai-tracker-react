@@ -148,12 +148,15 @@ updates, and photos into this project without touching the production code. A st
 # Dry run (recommended). Shows how many trees/updates/photos would be imported.
 python scripts/import_legacy_data.py \
   --legacy-db /path/to/old/bonsai.db \
-  --images-dir /path/to/legacy/images
+  --images-dir /path/to/legacy/images \
+  --target-db sqlite:////absolute/path/to/backend/bonsai.db \
+  --media-root /path/to/backend/var/media
 
 # Apply the import to the current backend/bonsai.db
 python scripts/import_legacy_data.py \
   --legacy-db /path/to/old/bonsai.db \
   --images-dir /path/to/legacy/images \
+  --media-root /path/to/backend/var/media \
   --commit
 ```
 
@@ -162,7 +165,9 @@ Key behaviour:
 - The script points at `backend/bonsai.db` by default but accepts any SQLAlchemy URL via `--target-db` when you need to import
   into a different environment.
 - Images are read from the directory you pass to `--images-dir`, re-saved through the same thumbnail pipeline that FastAPI uses,
-  and stored under `backend/var/media/full|thumbs` so the UI loads them exactly like newly uploaded photos.
+  and stored under `backend/var/media/full|thumbs` (or a custom location supplied via `--media-root`) so the UI loads them exactly
+  like newly uploaded photos. Override the thumbnail dimensions with `--thumbnail-size` if you use a different value in
+  production.
 - Missing species entries are created automatically (the species name from the legacy database is used as the new `common_name`).
 - Tree girth values recorded in millimetres are converted to centimetres before the corresponding measurement rows are written in
   the new schema.

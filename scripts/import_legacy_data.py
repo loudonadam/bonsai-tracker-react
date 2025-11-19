@@ -4,13 +4,30 @@ from __future__ import annotations
 
 import argparse
 import logging
+import mimetypes
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
+from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func, select
+from PIL import Image, ImageOps
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+    select,
+)
 from sqlalchemy.orm import Session, declarative_base, joinedload, relationship, sessionmaker
 
 # Ensure we can import the current backend package when this script is executed
@@ -18,9 +35,172 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from backend.app.config import settings  # noqa: E402
-from backend.app.models import Bonsai, BonsaiUpdate, Measurement, Photo, Species  # noqa: E402
-from backend.app.utils.images import save_image_bytes  # noqa: E402
+
+def _default_db_url() -> str:
+    default_sqlite = REPO_ROOT / "backend" / "bonsai.db"
+    return f"sqlite:///{default_sqlite}".replace("\\", "/")
+
+
+TargetBase = declarative_base()
+
+
+class Species(TargetBase):
+    __tablename__ = "species"
+
+    id = Column(Integer, primary_key=True)
+    common_name = Column(String(255), nullable=False)
+    scientific_name = Column(String(255))
+    description = Column(Text)
+    care_instructions = Column(Text)
+    tree_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    bonsai = relationship("Bonsai", back_populates="species")
+
+
+class Bonsai(TargetBase):
+    __tablename__ = "bonsai"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    species_id = Column(Integer, ForeignKey("species.id"))
+    acquisition_date = Column(Date)
+    origin_date = Column(Date)
+    location = Column(String(255))
+    notes = Column(Text)
+    development_stage = Column(String(100))
+    status = Column(String(50), default="active", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    species = relationship("Species", back_populates="bonsai")
+    updates = relationship("BonsaiUpdate", back_populates="bonsai", cascade="all, delete-orphan")
+    measurements = relationship(
+        "Measurement",
+        back_populates="bonsai",
+        cascade="all, delete-orphan",
+        order_by="Measurement.measured_at.desc()",
+    )
+    photos = relationship(
+        "Photo",
+        back_populates="bonsai",
+        cascade="all, delete-orphan",
+        order_by="Photo.created_at.desc()",
+    )
+
+
+class BonsaiUpdate(TargetBase):
+    __tablename__ = "bonsai_updates"
+
+    id = Column(Integer, primary_key=True)
+    bonsai_id = Column(Integer, ForeignKey("bonsai.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    performed_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    bonsai = relationship("Bonsai", back_populates="updates")
+
+
+class Measurement(TargetBase):
+    __tablename__ = "measurements"
+
+    id = Column(Integer, primary_key=True)
+    bonsai_id = Column(Integer, ForeignKey("bonsai.id"), nullable=False)
+    measured_at = Column(DateTime, default=datetime.utcnow)
+    height_cm = Column(Float)
+    trunk_diameter_cm = Column(Float)
+    canopy_width_cm = Column(Float)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    bonsai = relationship("Bonsai", back_populates="measurements")
+
+
+class Photo(TargetBase):
+    __tablename__ = "photos"
+
+    id = Column(Integer, primary_key=True)
+    bonsai_id = Column(Integer, ForeignKey("bonsai.id"), nullable=False)
+    update_id = Column(Integer, ForeignKey("bonsai_updates.id"))
+    description = Column(Text)
+    taken_at = Column(DateTime)
+    full_path = Column(String(500), nullable=False)
+    thumbnail_path = Column(String(500), nullable=False)
+    is_primary = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    bonsai = relationship("Bonsai", back_populates="photos")
+
+
+def guess_extension(filename: Optional[str], content_type: Optional[str]) -> str:
+    if filename:
+        suffix = Path(filename).suffix
+        if suffix:
+            return suffix
+    if content_type:
+        guessed = mimetypes.guess_extension(content_type)
+        if guessed:
+            return guessed
+    return ".jpg"
+
+
+def _apply_exif_orientation(image: Image.Image) -> Image.Image:
+    try:
+        return ImageOps.exif_transpose(image)
+    except Exception:
+        return image
+
+
+def _resolve_image_format(extension: str, image: Image.Image) -> str:
+    normalized_extension = extension.lower()
+    registered = Image.registered_extensions()
+    if normalized_extension in registered:
+        return registered[normalized_extension]
+    if image.format:
+        return image.format
+    return "JPEG"
+
+
+def _prepare_image_for_format(image: Image.Image, format_name: str) -> Image.Image:
+    if format_name.upper() == "JPEG" and image.mode not in ("RGB", "L"):
+        return image.convert("RGB")
+    return image
+
+
+def save_image_bytes(
+    content: bytes,
+    filename: Optional[str],
+    content_type: Optional[str],
+    media_root: Path,
+    thumbnail_size: int,
+) -> Tuple[str, str]:
+    extension = guess_extension(filename, content_type)
+    image_id = uuid4().hex
+
+    full_relative = Path("full") / f"{image_id}{extension}"
+    thumb_relative = Path("thumbs") / f"{image_id}{extension}"
+
+    full_path = media_root / full_relative
+    thumb_path = media_root / thumb_relative
+
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with Image.open(BytesIO(content)) as source_image:
+        oriented = _apply_exif_orientation(source_image)
+        format_name = _resolve_image_format(extension, oriented)
+        prepared_full = _prepare_image_for_format(oriented, format_name)
+        prepared_full.save(full_path, format=format_name)
+
+        thumbnail_image = prepared_full.copy()
+        thumbnail_image.thumbnail((thumbnail_size, thumbnail_size))
+        thumbnail_image = _prepare_image_for_format(thumbnail_image, format_name)
+        thumbnail_image.save(thumb_path, format=format_name)
+
+    return str(full_relative).replace("\\", "/"), str(thumb_relative).replace("\\", "/")
 
 LegacyBase = declarative_base()
 
@@ -105,8 +285,20 @@ def _get_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-db",
         type=str,
-        default=settings.database_url,
+        default=_default_db_url(),
         help="SQLAlchemy database URL for the new application",
+    )
+    parser.add_argument(
+        "--media-root",
+        type=Path,
+        default=REPO_ROOT / "backend" / "var" / "media",
+        help="Directory where processed full/thumbnail images should be stored",
+    )
+    parser.add_argument(
+        "--thumbnail-size",
+        type=int,
+        default=512,
+        help="Maximum dimension (in px) for generated thumbnails",
     )
     parser.add_argument(
         "--commit",
@@ -191,13 +383,26 @@ def _resolve_image_path(images_dir: Path, stored_path: str) -> Optional[Path]:
     return None
 
 
-def _import_photo(session: Session, bonsai: Bonsai, legacy_photo: LegacyPhoto, images_dir: Path) -> Optional[Photo]:
+def _import_photo(
+    session: Session,
+    bonsai: Bonsai,
+    legacy_photo: LegacyPhoto,
+    images_dir: Path,
+    media_root: Path,
+    thumbnail_size: int,
+) -> Optional[Photo]:
     source_path = _resolve_image_path(images_dir, legacy_photo.file_path)
     if not source_path:
         return None
 
     content = source_path.read_bytes()
-    full_rel, thumb_rel = save_image_bytes(content, source_path.name, None)
+    full_rel, thumb_rel = save_image_bytes(
+        content,
+        source_path.name,
+        None,
+        media_root,
+        thumbnail_size,
+    )
 
     photo = Photo(
         bonsai=bonsai,
@@ -234,7 +439,13 @@ def _import_update(session: Session, bonsai: Bonsai, legacy_update: LegacyTreeUp
     return update
 
 
-def _import_tree(session: Session, legacy_tree: LegacyTree, images_dir: Path) -> dict[str, int]:
+def _import_tree(
+    session: Session,
+    legacy_tree: LegacyTree,
+    images_dir: Path,
+    media_root: Path,
+    thumbnail_size: int,
+) -> dict[str, int]:
     result_counts = defaultdict(int)
 
     existing = session.scalar(
@@ -269,7 +480,7 @@ def _import_tree(session: Session, legacy_tree: LegacyTree, images_dir: Path) ->
         result_counts["updates"] += 1
 
     for photo in legacy_tree.photos:
-        if _import_photo(session, bonsai, photo, images_dir):
+        if _import_photo(session, bonsai, photo, images_dir, media_root, thumbnail_size):
             result_counts["photos"] += 1
 
     result_counts["trees"] += 1
@@ -307,6 +518,9 @@ def main() -> None:
     if not images_dir.exists():
         raise SystemExit(f"Images directory '{images_dir}' does not exist")
 
+    media_root = args.media_root
+    media_root.mkdir(parents=True, exist_ok=True)
+
     with legacy_session_maker() as legacy_session, target_session_maker() as target_session:
         legacy_trees = legacy_session.execute(
             select(LegacyTree).options(
@@ -318,7 +532,13 @@ def main() -> None:
 
         totals = defaultdict(int)
         for legacy_tree in legacy_trees:
-            counts = _import_tree(target_session, legacy_tree, images_dir)
+            counts = _import_tree(
+                target_session,
+                legacy_tree,
+                images_dir,
+                media_root,
+                args.thumbnail_size,
+            )
             for key, value in counts.items():
                 totals[key] += value
 
