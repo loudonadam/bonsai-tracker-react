@@ -27,8 +27,11 @@ HOST_IP=192.168.1.42 ./start_project.sh
 ```
 
 Devices on the same network can then open `http://<your-ip>:5173` in a browser
-and use the app normally. Press **Ctrl+C** when you are finished to stop both
-processes.
+and use the app normally. The Vite dev server now proxies `/api` and `/media`
+back to FastAPI, so phones/tablets only need to reach port **5173**; if they
+cannot talk to `http://<your-ip>:8000` directly, the UI will fall back to the
+proxied API after a short timeout instead of getting stuck on "Loading your
+collection". Press **Ctrl+C** when you are finished to stop both processes.
 
 You can re-run the script anytime; it is idempotent and simply restarts the
 servers after ensuring dependencies are installed.
@@ -57,8 +60,9 @@ servers after ensuring dependencies are installed.
    app and your phone/tablet all talk to the same FastAPI instance. If your
    computer has multiple adapters (for example Ethernet + Wi-Fi) and a device
    connects through a different LAN IP than the one detected, the browser will
-   automatically fall back to the host that served the UI so API calls continue
-   to work without touching `.env.local`.
+   automatically fall back to the host that served the UI after ~8 seconds and
+   retry every request through the built-in proxy so API calls continue to work
+   without touching `.env.local`.
 5. Wait for the banner that prints both `http://localhost:5173` and the
    network URL (`http://<HOST_IP>:5173`). Open either address from your desktop
    browser (and the network URL from other devices). Hot reload works the same
@@ -192,8 +196,11 @@ t them on separate subnets.
    # then edit .env.local and replace localhost with your IP, for example
    # VITE_API_BASE_URL=http://192.168.1.50:8000/api
    ```
-4. (Optional but recommended) Configure your operating system firewall to allow inbound connections on ports **8000** (FastAPI)
-   and **5173** (Vite dev server).
+4. Configure your operating system firewall to allow inbound connections on
+   port **5173** (required for the dev server). Opening **8000** is optional and
+   only needed if you want other devices to hit the FastAPI docs directly;
+   regular UI traffic automatically proxies API/media calls through 5173 when a
+   device cannot reach the backend port.
 5. Start the backend with the network-facing host:
    ```bash
    cd backend

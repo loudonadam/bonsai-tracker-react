@@ -12,7 +12,7 @@ import { apiClient, getApiBaseUrl } from "../services/apiClient";
 
 const TreesContext = createContext(null);
 
-const MEDIA_URL_CACHE = { base: undefined };
+const MEDIA_URL_CACHE = { base: undefined, source: undefined };
 
 const resolveMediaUrl = (input) => {
   if (!input) {
@@ -23,8 +23,14 @@ const resolveMediaUrl = (input) => {
     return input;
   }
 
-  if (MEDIA_URL_CACHE.base === undefined) {
-    const baseUrl = getApiBaseUrl();
+  const apiBaseUrl = getApiBaseUrl();
+
+  if (
+    MEDIA_URL_CACHE.base === undefined ||
+    MEDIA_URL_CACHE.source !== apiBaseUrl
+  ) {
+    MEDIA_URL_CACHE.source = apiBaseUrl;
+    const baseUrl = apiBaseUrl;
     try {
       const reference =
         typeof window !== "undefined"

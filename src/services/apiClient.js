@@ -1,4 +1,17 @@
+const DEFAULT_BASE_URL = "http://localhost:8000/api";
+const UI_PROXY_BASE = "/api";
+const REQUEST_TIMEOUT_MS = 8000;
+
 const sanitizeBaseUrl = (value) => value?.replace(/\/$/, "");
+
+const trackCandidate = (collector, candidate) => {
+  const sanitized = sanitizeBaseUrl(candidate);
+  if (!sanitized || collector.set.has(sanitized)) {
+    return;
+  }
+  collector.set.add(sanitized);
+  collector.values.push(sanitized);
+};
 
 const inferDefaultBaseUrl = () => {
   if (typeof window === "undefined" || !window.location) {
@@ -56,13 +69,10 @@ const shouldMirrorUiHostname = (envHostname, currentHostname) => {
 const resolveApiBaseUrls = () => {
   const envBaseUrl = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
   const inferredBaseUrl = sanitizeBaseUrl(inferDefaultBaseUrl());
+  const relativeBaseUrl =
+    typeof window !== "undefined" && window.location ? UI_PROXY_BASE : null;
 
-  let primary = envBaseUrl || inferredBaseUrl;
-  if (!primary) {
-    primary = "http://localhost:8000/api";
-  }
-
-  let fallback;
+  let preferredBase = envBaseUrl || inferredBaseUrl || DEFAULT_BASE_URL;
 
   if (
     envBaseUrl &&
@@ -73,101 +83,137 @@ const resolveApiBaseUrls = () => {
     try {
       const envUrl = new URL(envBaseUrl, window.location.origin);
       if (shouldMirrorUiHostname(envUrl.hostname, window.location.hostname)) {
-        primary = inferredBaseUrl;
-        if (envBaseUrl !== inferredBaseUrl) {
-          fallback = envBaseUrl;
-        }
+        preferredBase = inferredBaseUrl || relativeBaseUrl || DEFAULT_BASE_URL;
       }
     } catch {
       /* ignore invalid URLs and fall back to the configured value */
     }
   }
 
-  if (!fallback && inferredBaseUrl && inferredBaseUrl !== primary) {
-    fallback = inferredBaseUrl;
-  }
+  const collector = { set: new Set(), values: [] };
+  trackCandidate(collector, preferredBase);
+  trackCandidate(collector, inferredBaseUrl);
+  trackCandidate(collector, envBaseUrl);
+  trackCandidate(collector, relativeBaseUrl);
+  trackCandidate(collector, DEFAULT_BASE_URL);
 
-  if (!fallback && envBaseUrl && envBaseUrl !== primary) {
-    fallback = envBaseUrl;
-  }
-
-  return { primary, fallback };
+  return collector.values.length > 0 ? collector.values : [DEFAULT_BASE_URL];
 };
 
-const { primary, fallback } = resolveApiBaseUrls();
-let activeApiBaseUrl = primary;
-let standbyApiBaseUrl = fallback;
+const apiBaseUrls = resolveApiBaseUrls();
+let activeBaseUrlIndex = 0;
 const isDevEnvironment = Boolean(import.meta.env && import.meta.env.DEV);
 
 if (isDevEnvironment) {
-  const fallbackLabel = standbyApiBaseUrl
-    ? ` (fallback: ${standbyApiBaseUrl})`
-    : "";
-  console.info(`[api] Using API base URL: ${activeApiBaseUrl}${fallbackLabel}`);
+  const priorityMessage = apiBaseUrls
+    .map((url, index) => `${index === activeBaseUrlIndex ? "*" : "-"} ${url}`)
+    .join("\n  ");
+  console.info(`[api] Base URL priority:\n  ${priorityMessage}`);
 }
 
 const isLikelyNetworkError = (error) =>
   error &&
   (error.name === "TypeError" ||
+    error.name === "AbortError" ||
     /Network request failed/i.test(error.message || "") ||
     /Failed to fetch/i.test(error.message || ""));
 
 const performRequest = async (baseUrl, path, options = {}) => {
-  const url = `${baseUrl}${path}`;
-  return fetch(url, {
-    headers: {
-      Accept: "application/json",
-      ...(options.body instanceof FormData
-        ? {}
-        : { "Content-Type": "application/json", ...(options.headers || {}) }),
-    },
-    ...options,
-  });
+  const { timeout, headers: customHeaders, ...restOptions } = options;
+  const headers = {
+    Accept: "application/json",
+    ...(restOptions.body instanceof FormData
+      ? {}
+      : { "Content-Type": "application/json" }),
+    ...(customHeaders || {}),
+  };
+
+  const fetchOptions = {
+    ...restOptions,
+    headers,
+  };
+
+  let controller;
+  let timeoutId;
+  const resolvedTimeout =
+    typeof timeout === "number" ? timeout : REQUEST_TIMEOUT_MS;
+
+  if (typeof fetchOptions.signal === "undefined" && resolvedTimeout > 0) {
+    controller = new AbortController();
+    fetchOptions.signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), resolvedTimeout);
+  }
+
+  try {
+    return await fetch(`${baseUrl}${path}`, fetchOptions);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
+const parseResponse = async (response) => {
+  if (!response.ok) {
+    let errorDetail = `Request failed with status ${response.status}`;
+    try {
+      const data = await response.json();
+      if (data?.detail) {
+        errorDetail = Array.isArray(data.detail)
+          ? data.detail.map((item) => item.msg || item).join(", ")
+          : data.detail;
+      }
+    } catch {
+      /* ignore JSON parsing errors */
+    }
+    throw new Error(errorDetail);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
 };
 
 async function request(path, options = {}) {
-  const attemptFetch = async () => {
-    const response = await performRequest(activeApiBaseUrl, path, options);
+  const candidateOrder = [];
+  for (let i = 0; i < apiBaseUrls.length; i += 1) {
+    const index = (activeBaseUrlIndex + i) % apiBaseUrls.length;
+    if (!candidateOrder.includes(index)) {
+      candidateOrder.push(index);
+    }
+  }
 
-    if (!response.ok) {
-      let errorDetail = `Request failed with status ${response.status}`;
-      try {
-        const data = await response.json();
-        if (data?.detail) {
-          errorDetail = Array.isArray(data.detail)
-            ? data.detail.map((item) => item.msg || item).join(", ")
-            : data.detail;
-        }
-      } catch {
-        /* ignore JSON parsing errors */
+  let lastError = null;
+
+  for (let i = 0; i < candidateOrder.length; i += 1) {
+    const index = candidateOrder[i];
+    const baseUrl = apiBaseUrls[index];
+    try {
+      const response = await performRequest(baseUrl, path, options);
+      const data = await parseResponse(response);
+      if (activeBaseUrlIndex !== index && isDevEnvironment) {
+        console.info(`[api] Switched active API base to ${baseUrl}`);
       }
-      throw new Error(errorDetail);
-    }
-
-    if (response.status === 204) {
-      return null;
-    }
-
-    return response.json();
-  };
-
-  try {
-    return await attemptFetch();
-  } catch (error) {
-    if (standbyApiBaseUrl && isLikelyNetworkError(error)) {
-      const previousBaseUrl = activeApiBaseUrl;
-      const nextBaseUrl = standbyApiBaseUrl;
-      standbyApiBaseUrl = null;
-      activeApiBaseUrl = nextBaseUrl;
+      activeBaseUrlIndex = index;
+      return data;
+    } catch (error) {
+      lastError = error;
+      const hasAlternatives = i < candidateOrder.length - 1;
+      if (!isLikelyNetworkError(error) || !hasAlternatives) {
+        throw error;
+      }
       if (isDevEnvironment) {
+        const nextBaseUrl = apiBaseUrls[candidateOrder[i + 1]];
         console.warn(
-          `Falling back to ${nextBaseUrl} after network error from ${previousBaseUrl}`
+          `[api] ${baseUrl} failed (${error.message}). Retrying with ${nextBaseUrl}.`
         );
       }
-      return attemptFetch();
     }
-    throw error;
   }
+
+  throw lastError || new Error("All API hosts failed");
 }
 
 export const apiClient = {
@@ -198,5 +244,5 @@ export const apiClient = {
 };
 
 export function getApiBaseUrl() {
-  return activeApiBaseUrl;
+  return apiBaseUrls[activeBaseUrlIndex] || DEFAULT_BASE_URL;
 }
