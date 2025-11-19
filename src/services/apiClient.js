@@ -25,8 +25,31 @@ const inferDefaultBaseUrl = () => {
   return `${normalizedProtocol}//${normalizedHost}${portSegment}/api`;
 };
 
-const API_BASE_URL =
-  sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL) || sanitizeBaseUrl(inferDefaultBaseUrl());
+const isLocalhostHostname = (hostname) =>
+  ["localhost", "127.0.0.1", "[::1]"].includes(hostname?.toLowerCase?.() ?? "");
+
+const resolveApiBaseUrl = () => {
+  const envBaseUrl = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+  const inferredBaseUrl = sanitizeBaseUrl(inferDefaultBaseUrl());
+
+  if (!envBaseUrl) {
+    return inferredBaseUrl;
+  }
+
+  if (typeof window !== "undefined" && window.location) {
+    const envUrl = new URL(envBaseUrl, window.location.origin);
+    if (isLocalhostHostname(envUrl.hostname) && !isLocalhostHostname(window.location.hostname)) {
+      // The app is being accessed from another device (non-localhost) but the
+      // environment variable still points at localhost. Use the inferred base
+      // URL so mobile clients call the same host that served the UI.
+      return inferredBaseUrl;
+    }
+  }
+
+  return envBaseUrl;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 async function request(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
