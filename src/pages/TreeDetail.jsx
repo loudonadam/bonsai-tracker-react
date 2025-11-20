@@ -133,6 +133,7 @@ const TreeDetail = () => {
     updateTreePhoto,
     deleteTreePhoto,
     createTreeMeasurement,
+    updateTreeMeasurement,
     deleteTreeMeasurement,
     createTreeUpdate,
     updateTreeUpdate,
@@ -386,11 +387,13 @@ const TreeDetail = () => {
 
     return tree.measurements
       .map((measurement) => {
-        const hasMeasurement =
-          typeof measurement.trunkDiameter === "number" && !Number.isNaN(measurement.trunkDiameter);
+        const roundedMeasurement =
+          typeof measurement.trunkDiameter === "number" && !Number.isNaN(measurement.trunkDiameter)
+            ? Number(measurement.trunkDiameter.toFixed(1))
+            : null;
         const hasDate = Boolean(measurement.measuredAt);
 
-        if (!hasMeasurement || !hasDate) {
+        if (roundedMeasurement === null || !hasDate) {
           return null;
         }
 
@@ -401,7 +404,7 @@ const TreeDetail = () => {
           return null;
         }
 
-        if (measurement.trunkDiameter === 0) {
+        if (roundedMeasurement === 0) {
           return null;
         }
 
@@ -412,7 +415,7 @@ const TreeDetail = () => {
             day: "numeric",
             year: "numeric",
           }),
-          measurement: measurement.trunkDiameter,
+          measurement: roundedMeasurement,
         };
       })
       .filter(Boolean)
@@ -1572,6 +1575,29 @@ const TreeDetail = () => {
           description: trimmedWork,
           performed_at: performedAt,
         });
+
+        const measurementForUpdate = Array.isArray(tree.measurements)
+          ? tree.measurements.find(
+              (measurement) => Number(measurement.updateId) === Number(editingUpdateId)
+            )
+          : null;
+
+        if (parsedGirth !== null) {
+          if (measurementForUpdate) {
+            await updateTreeMeasurement(tree.id, measurementForUpdate.id, {
+              measured_at: performedAt,
+              trunk_diameter_cm: parsedGirth,
+            });
+          } else {
+            await createTreeMeasurement(tree.id, {
+              measured_at: performedAt,
+              trunk_diameter_cm: parsedGirth,
+              update_id: editingUpdateId,
+            });
+          }
+        } else if (measurementForUpdate) {
+          await deleteTreeMeasurement(tree.id, measurementForUpdate.id);
+        }
       } else {
         const createdUpdate = await createTreeUpdate(tree.id, {
           title: trimmedWork,
@@ -1583,6 +1609,7 @@ const TreeDetail = () => {
           await createTreeMeasurement(tree.id, {
             measured_at: performedAt,
             trunk_diameter_cm: parsedGirth,
+            update_id: createdUpdate.id,
           });
         }
 
@@ -1660,28 +1687,11 @@ const TreeDetail = () => {
       return;
     }
 
-    const toDateKey = (input) => {
-      if (!input) {
-        return null;
-      }
-      const parsed = new Date(input);
-      if (Number.isNaN(parsed.getTime())) {
-        return null;
-      }
-      return `${parsed.getFullYear()}-${parsed.getMonth()}-${parsed.getDate()}`;
-    };
-
-    const updateDateKey = toDateKey(
-      updateRecord?.performedAt ?? updateRecord?.date ?? null
-    );
-
-    const measurementForUpdate =
-      updateDateKey && Array.isArray(tree?.measurements)
-        ? tree.measurements.find((measurement) => {
-            const measurementKey = toDateKey(measurement.measuredAt);
-            return measurementKey === updateDateKey;
-          }) ?? null
-        : null;
+    const measurementForUpdate = Array.isArray(tree?.measurements)
+      ? tree.measurements.find(
+          (measurement) => Number(measurement.updateId) === Number(updateId)
+        ) ?? null
+      : null;
 
     setIsDeletingUpdateId(updateId);
     setUpdateActionError("");
@@ -1996,7 +2006,7 @@ const TreeDetail = () => {
                 label={{ value: "Trunk Width (cm)", angle: -90, position: "insideLeft", fill: "#4b5563", fontSize: 12 }}
               />
               <Tooltip
-                formatter={(value) => [`${value} cm`, "Trunk Width"]}
+                formatter={(value) => [`${Number(value).toFixed(1)} cm`, "Trunk Width"]}
                 labelFormatter={(label) =>
                   new Date(label).toLocaleDateString("en-US", {
                     month: "long",
@@ -2053,7 +2063,7 @@ const TreeDetail = () => {
                   {typeof update.girth === "number" && (
                     <div className="flex items-center gap-2 mt-1">
                       <Ruler className="w-4 h-4" />
-                      <span>{update.girth} cm width</span>
+                      <span>{update.girth.toFixed(1)} cm width</span>
                     </div>
                   )}
                 </div>

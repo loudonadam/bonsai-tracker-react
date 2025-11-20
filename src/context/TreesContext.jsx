@@ -77,6 +77,14 @@ const mapPhoto = (photo) => {
   };
 };
 
+const toTenths = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Number(numeric.toFixed(1));
+};
+
 const mapUpdate = (entry) => ({
   id: entry.id,
   date: entry.performed_at ?? entry.created_at,
@@ -89,10 +97,11 @@ const mapUpdate = (entry) => ({
 const mapMeasurement = (entry) => ({
   id: entry.id,
   measuredAt: entry.measured_at ?? entry.created_at,
-  height: entry.height_cm,
-  trunkDiameter: entry.trunk_diameter_cm,
-  canopyWidth: entry.canopy_width_cm,
+  height: toTenths(entry.height_cm ?? entry.height),
+  trunkDiameter: toTenths(entry.trunk_diameter_cm ?? entry.trunkDiameter),
+  canopyWidth: toTenths(entry.canopy_width_cm ?? entry.canopyWidth),
   notes: entry.notes ?? "",
+  updateId: entry.update_id ?? entry.updateId ?? null,
 });
 
 const mapNotification = (entry) => ({
@@ -135,6 +144,16 @@ const mapGraveyardEntry = (entry) => {
 };
 
 const mapBonsai = (entry) => {
+  const measurements = Array.isArray(entry.measurements)
+    ? entry.measurements.map(mapMeasurement)
+    : [];
+  const measurementByUpdateId = new Map();
+  measurements.forEach((measurement) => {
+    if (measurement.updateId) {
+      measurementByUpdateId.set(Number(measurement.updateId), measurement);
+    }
+  });
+
   const photos = Array.isArray(entry.photos) ? entry.photos.map(mapPhoto) : [];
 
   let primaryPhoto = null;
@@ -146,6 +165,25 @@ const mapBonsai = (entry) => {
   const speciesName = entry.species
     ? `${entry.species.common_name}${entry.species.scientific_name ? ` (${entry.species.scientific_name})` : ""}`
     : "Unknown species";
+
+  const updates = Array.isArray(entry.updates)
+    ? entry.updates.map((update) => {
+        const mappedUpdate = mapUpdate(update);
+        const measurement = measurementByUpdateId.get(Number(mappedUpdate.id));
+        if (!measurement) {
+          return mappedUpdate;
+        }
+
+        return {
+          ...mappedUpdate,
+          girth: measurement.trunkDiameter,
+          measurementId: measurement.id,
+        };
+      })
+    : [];
+
+  const latestMeasurement =
+    measurements[0] || (entry.latest_measurement ? mapMeasurement(entry.latest_measurement) : null);
 
   return {
     id: entry.id,
@@ -162,14 +200,12 @@ const mapBonsai = (entry) => {
       entry.latest_update?.performed_at ||
       entry.latest_update?.created_at ||
       entry.updated_at,
-    currentGirth: entry.latest_measurement?.trunk_diameter_cm ?? null,
+    currentGirth: latestMeasurement?.trunkDiameter ?? null,
     photoUrl: primaryPhoto?.thumbnailUrl || primaryPhoto?.url || null,
     fullPhotoUrl: primaryPhoto?.fullUrl || null,
     photos,
-    updates: Array.isArray(entry.updates) ? entry.updates.map(mapUpdate) : [],
-    measurements: Array.isArray(entry.measurements)
-      ? entry.measurements.map(mapMeasurement)
-      : [],
+    updates,
+    measurements,
     reminders: Array.isArray(entry.notifications)
       ? entry.notifications.map(mapNotification)
       : [],
@@ -408,6 +444,29 @@ export const TreesProvider = ({ children }) => {
         return {
           ...tree,
           measurements: [mapped, ...existing],
+        };
+      });
+
+      return mapped;
+    },
+    [updateTreeReferences]
+  );
+
+  const updateTreeMeasurement = useCallback(
+    async (treeId, measurementId, data) => {
+      const response = await apiClient.patch(
+        `/bonsai/${treeId}/measurements/${measurementId}`,
+        data
+      );
+      const mapped = mapMeasurement(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existing = Array.isArray(tree.measurements) ? tree.measurements : [];
+        return {
+          ...tree,
+          measurements: existing.map((measurement) =>
+            Number(measurement.id) === Number(measurementId) ? mapped : measurement
+          ),
         };
       });
 
@@ -714,6 +773,7 @@ export const TreesProvider = ({ children }) => {
       updateTreePhoto,
       deleteTreePhoto,
       createTreeMeasurement,
+      updateTreeMeasurement,
       deleteTreeMeasurement,
       createTreeUpdate,
       updateTreeUpdate,
@@ -739,6 +799,7 @@ export const TreesProvider = ({ children }) => {
       updateTreePhoto,
       deleteTreePhoto,
       createTreeMeasurement,
+      updateTreeMeasurement,
       deleteTreeMeasurement,
       createTreeUpdate,
       updateTreeUpdate,
