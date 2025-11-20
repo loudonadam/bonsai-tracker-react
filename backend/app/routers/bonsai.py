@@ -17,7 +17,7 @@ def _load_bonsai(db: Session, bonsai_id: int) -> models.Bonsai:
             selectinload(models.Bonsai.species),
             selectinload(models.Bonsai.photos),
             selectinload(models.Bonsai.measurements),
-            selectinload(models.Bonsai.updates),
+            selectinload(models.Bonsai.updates).selectinload(models.BonsaiUpdate.measurement),
             selectinload(models.Bonsai.notifications),
             selectinload(models.Bonsai.graveyard_entry),
             selectinload(models.Bonsai.accolades).selectinload(models.Accolade.photo),
@@ -38,7 +38,7 @@ def list_bonsai(db: Session = Depends(get_db)):
             selectinload(models.Bonsai.species),
             selectinload(models.Bonsai.photos),
             selectinload(models.Bonsai.measurements),
-            selectinload(models.Bonsai.updates),
+            selectinload(models.Bonsai.updates).selectinload(models.BonsaiUpdate.measurement),
             selectinload(models.Bonsai.notifications),
             selectinload(models.Bonsai.graveyard_entry),
             selectinload(models.Bonsai.accolades).selectinload(models.Accolade.photo),
@@ -84,6 +84,21 @@ def update_bonsai(bonsai_id: int, payload: schemas.BonsaiUpdate, db: Session = D
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bonsai not found")
 
     data = payload.model_dump(exclude_unset=True)
+
+    if "species_id" in data and data["species_id"] != bonsai.species_id:
+        new_species_id = data.get("species_id")
+        new_species = db.get(models.Species, new_species_id) if new_species_id else None
+        if new_species_id and not new_species:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Species not found")
+
+        if bonsai.species_id:
+            old_species = db.get(models.Species, bonsai.species_id)
+            if old_species and old_species.tree_count:
+                old_species.tree_count = max(0, (old_species.tree_count or 0) - 1)
+
+        if new_species:
+            new_species.tree_count = (new_species.tree_count or 0) + 1
+
     for key, value in data.items():
         setattr(bonsai, key, value)
 

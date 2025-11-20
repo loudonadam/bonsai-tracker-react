@@ -132,8 +132,6 @@ const TreeDetail = () => {
     updateTree,
     updateTreePhoto,
     deleteTreePhoto,
-    createTreeMeasurement,
-    deleteTreeMeasurement,
     createTreeUpdate,
     updateTreeUpdate,
     deleteTreeUpdate,
@@ -1562,29 +1560,40 @@ const TreeDetail = () => {
         : null;
 
     const performedAt = `${newUpdate.date}T00:00:00`;
+    const measurementPayload =
+      newUpdate.girth.trim() !== ""
+        ? { measured_at: performedAt, trunk_diameter_cm: parsedGirth }
+        : editingUpdateId
+          ? { measured_at: performedAt, trunk_diameter_cm: null }
+          : null;
 
     setIsSavingUpdate(true);
 
     try {
       if (editingUpdateId) {
-        await updateTreeUpdate(tree.id, editingUpdateId, {
+        const payload = {
           title: trimmedWork,
           description: trimmedWork,
           performed_at: performedAt,
-        });
-      } else {
-        const createdUpdate = await createTreeUpdate(tree.id, {
-          title: trimmedWork,
-          description: trimmedWork,
-          performed_at: performedAt,
-        });
+        };
 
-        if (parsedGirth !== null) {
-          await createTreeMeasurement(tree.id, {
-            measured_at: performedAt,
-            trunk_diameter_cm: parsedGirth,
-          });
+        if (measurementPayload) {
+          payload.measurement = measurementPayload;
         }
+
+        await updateTreeUpdate(tree.id, editingUpdateId, payload);
+      } else {
+        const updatePayload = {
+          title: trimmedWork,
+          description: trimmedWork,
+          performed_at: performedAt,
+        };
+
+        if (measurementPayload) {
+          updatePayload.measurement = measurementPayload;
+        }
+
+        const createdUpdate = await createTreeUpdate(tree.id, updatePayload);
 
         if (newUpdate.photoFile) {
           const photoPayload = {
@@ -1651,57 +1660,17 @@ const TreeDetail = () => {
         : tree?.updates?.find(
             (item) => Number(item.id) === Number(updateOrId)
           ) ?? null;
-    const updateId =
-      typeof updateOrId === "object" && updateOrId !== null
-        ? updateOrId.id
-        : updateOrId;
+    const updateId = updateRecord?.id;
 
     if (!updateId || isDeletingUpdateId === updateId) {
       return;
     }
-
-    const toDateKey = (input) => {
-      if (!input) {
-        return null;
-      }
-      const parsed = new Date(input);
-      if (Number.isNaN(parsed.getTime())) {
-        return null;
-      }
-      return `${parsed.getFullYear()}-${parsed.getMonth()}-${parsed.getDate()}`;
-    };
-
-    const updateDateKey = toDateKey(
-      updateRecord?.performedAt ?? updateRecord?.date ?? null
-    );
-
-    const measurementForUpdate =
-      updateDateKey && Array.isArray(tree?.measurements)
-        ? tree.measurements.find((measurement) => {
-            const measurementKey = toDateKey(measurement.measuredAt);
-            return measurementKey === updateDateKey;
-          }) ?? null
-        : null;
 
     setIsDeletingUpdateId(updateId);
     setUpdateActionError("");
 
     try {
       await deleteTreeUpdate(tree.id, updateId);
-      if (measurementForUpdate) {
-        try {
-          await deleteTreeMeasurement(tree.id, measurementForUpdate.id);
-        } catch (measurementError) {
-          console.error(
-            "Failed to delete measurement associated with the update",
-            measurementError
-          );
-          throw new Error(
-            measurementError?.message ||
-              "The update was removed, but its measurement could not be deleted."
-          );
-        }
-      }
       const refreshed = await fetchTreeById(tree.id);
       setTree(refreshed);
       setAccolades(refreshed.accolades ?? []);

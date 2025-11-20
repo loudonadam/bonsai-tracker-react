@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -16,7 +18,33 @@ def add_measurement(bonsai_id: int, payload: schemas.MeasurementCreate, db: Sess
     if not bonsai:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bonsai not found")
 
-    measurement = models.Measurement(bonsai_id=bonsai_id, **payload.model_dump(exclude_unset=True))
+    update = db.get(models.BonsaiUpdate, payload.update_id)
+    if not update or update.bonsai_id != bonsai_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Update not found for this bonsai")
+
+    if not any(
+        value is not None
+        for value in (
+            payload.height_cm,
+            payload.trunk_diameter_cm,
+            payload.canopy_width_cm,
+            payload.notes,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one measurement value is required",
+        )
+
+    measurement = models.Measurement(
+        bonsai_id=bonsai_id,
+        update_id=update.id,
+        measured_at=payload.measured_at or update.performed_at or datetime.utcnow(),
+        height_cm=payload.height_cm,
+        trunk_diameter_cm=payload.trunk_diameter_cm,
+        canopy_width_cm=payload.canopy_width_cm,
+        notes=payload.notes,
+    )
     db.add(measurement)
     db.commit()
     db.refresh(measurement)

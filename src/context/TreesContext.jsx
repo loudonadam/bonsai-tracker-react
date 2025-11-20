@@ -77,6 +77,16 @@ const mapPhoto = (photo) => {
   };
 };
 
+const mapMeasurement = (entry) => ({
+  id: entry.id,
+  updateId: entry.update_id ?? entry.updateId ?? null,
+  measuredAt: entry.measured_at ?? entry.created_at,
+  height: entry.height_cm,
+  trunkDiameter: entry.trunk_diameter_cm,
+  canopyWidth: entry.canopy_width_cm,
+  notes: entry.notes ?? "",
+});
+
 const mapUpdate = (entry) => ({
   id: entry.id,
   date: entry.performed_at ?? entry.created_at,
@@ -84,15 +94,8 @@ const mapUpdate = (entry) => ({
   description: entry.description ?? "",
   workPerformed: entry.description ?? entry.title,
   performedAt: entry.performed_at ?? entry.created_at,
-});
-
-const mapMeasurement = (entry) => ({
-  id: entry.id,
-  measuredAt: entry.measured_at ?? entry.created_at,
-  height: entry.height_cm,
-  trunkDiameter: entry.trunk_diameter_cm,
-  canopyWidth: entry.canopy_width_cm,
-  notes: entry.notes ?? "",
+  measurement: entry.measurement ? mapMeasurement(entry.measurement) : null,
+  girth: entry.measurement?.trunk_diameter_cm ?? null,
 });
 
 const mapNotification = (entry) => ({
@@ -305,12 +308,28 @@ export const TreesProvider = ({ children }) => {
       let mapped = mapBonsai(created);
 
       if (treeData.trunkWidth) {
-        const measurementPayload = {
-          measured_at: treeData.acquisitionDate || undefined,
-          trunk_diameter_cm: Number(treeData.trunkWidth),
-        };
-        if (!Number.isNaN(measurementPayload.trunk_diameter_cm)) {
-          await apiClient.post(`/bonsai/${mapped.id}/measurements`, measurementPayload);
+        const trunkDiameter = Number(treeData.trunkWidth);
+        const performedAt = treeData.acquisitionDate
+          ? `${treeData.acquisitionDate}T00:00:00`
+          : new Date().toISOString();
+        if (!Number.isNaN(trunkDiameter)) {
+          const measurementUpdate = await apiClient.post(`/bonsai/${mapped.id}/updates`, {
+            title: "Initial measurement",
+            description: "Initial measurement",
+            performed_at: performedAt,
+            measurement: {
+              measured_at: performedAt,
+              trunk_diameter_cm: trunkDiameter,
+            },
+          });
+          const mappedUpdate = mapUpdate(measurementUpdate);
+          mapped = {
+            ...mapped,
+            updates: [mappedUpdate, ...mapped.updates],
+            measurements: mappedUpdate.measurement
+              ? [mappedUpdate.measurement, ...mapped.measurements]
+              : mapped.measurements,
+          };
         }
       }
 
@@ -400,7 +419,15 @@ export const TreesProvider = ({ children }) => {
 
   const createTreeMeasurement = useCallback(
     async (treeId, data) => {
-      const response = await apiClient.post(`/bonsai/${treeId}/measurements`, data);
+      const updateId = data?.update_id ?? data?.updateId;
+      if (!updateId) {
+        throw new Error("An associated update_id is required for a measurement.");
+      }
+
+      const response = await apiClient.post(`/bonsai/${treeId}/measurements`, {
+        ...data,
+        update_id: updateId,
+      });
       const mapped = mapMeasurement(response);
 
       updateTreeReferences(treeId, (tree) => {
@@ -422,11 +449,19 @@ export const TreesProvider = ({ children }) => {
 
       updateTreeReferences(treeId, (tree) => {
         const existing = Array.isArray(tree.measurements) ? tree.measurements : [];
+        const updates = Array.isArray(tree.updates)
+          ? tree.updates.map((update) =>
+              Number(update.measurement?.id) === Number(measurementId)
+                ? { ...update, measurement: null, girth: null }
+                : update
+            )
+          : [];
         return {
           ...tree,
           measurements: existing.filter(
             (measurement) => Number(measurement.id) !== Number(measurementId)
           ),
+          updates,
         };
       });
     },
@@ -440,9 +475,21 @@ export const TreesProvider = ({ children }) => {
 
       updateTreeReferences(treeId, (tree) => {
         const existing = Array.isArray(tree.updates) ? tree.updates : [];
+        const existingMeasurements = Array.isArray(tree.measurements)
+          ? tree.measurements
+          : [];
+        const measurements = mapped.measurement
+          ? [
+              mapped.measurement,
+              ...existingMeasurements.filter(
+                (measurement) => Number(measurement.id) !== Number(mapped.measurement.id)
+              ),
+            ]
+          : existingMeasurements;
         return {
           ...tree,
           updates: [mapped, ...existing],
+          measurements,
         };
       });
 
@@ -461,11 +508,29 @@ export const TreesProvider = ({ children }) => {
 
       updateTreeReferences(treeId, (tree) => {
         const existing = Array.isArray(tree.updates) ? tree.updates : [];
+        const existingMeasurements = Array.isArray(tree.measurements)
+          ? tree.measurements
+          : [];
+        const previousUpdate = existing.find((item) => Number(item.id) === Number(updateId));
+        const filteredMeasurements = previousUpdate?.measurement?.id
+          ? existingMeasurements.filter(
+              (measurement) => Number(measurement.id) !== Number(previousUpdate.measurement.id)
+            )
+          : existingMeasurements;
+        const measurements = mapped.measurement
+          ? [
+              mapped.measurement,
+              ...filteredMeasurements.filter(
+                (measurement) => Number(measurement.id) !== Number(mapped.measurement.id)
+              ),
+            ]
+          : filteredMeasurements;
         return {
           ...tree,
           updates: existing.map((update) =>
             Number(update.id) === Number(updateId) ? mapped : update
           ),
+          measurements,
         };
       });
 
@@ -480,9 +545,19 @@ export const TreesProvider = ({ children }) => {
 
       updateTreeReferences(treeId, (tree) => {
         const existing = Array.isArray(tree.updates) ? tree.updates : [];
+        const existingMeasurements = Array.isArray(tree.measurements)
+          ? tree.measurements
+          : [];
+        const removedUpdate = existing.find((update) => Number(update.id) === Number(updateId));
+        const measurements = removedUpdate?.measurement?.id
+          ? existingMeasurements.filter(
+              (measurement) => Number(measurement.id) !== Number(removedUpdate.measurement.id)
+            )
+          : existingMeasurements;
         return {
           ...tree,
           updates: existing.filter((update) => Number(update.id) !== Number(updateId)),
+          measurements,
         };
       });
     },
