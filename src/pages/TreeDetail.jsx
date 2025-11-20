@@ -1801,35 +1801,54 @@ const TreeDetail = () => {
 
     const canSetAsPrimary = canEditCurrentPhoto;
 
+    const viewerBackgroundStyle = currentPhoto?.url
+      ? {
+          backgroundImage: `url(${currentPhoto.url})`,
+        }
+      : undefined;
+
     return (
       <div className="space-y-6">
-        <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: "400px" }}>
-          {currentPhoto?.url ? (
-            <img
-              src={currentPhoto.url}
-              alt={currentPhoto.description}
-              className="w-full h-full object-contain cursor-pointer"
-              onClick={() =>
-                openPhotoViewer(currentPhoto, {
-                  subtitle: currentPhoto.date ? formatDate(currentPhoto.date) : undefined,
-                })
-              }
-            />
-          ) : (
+        <div
+          className="relative mx-auto max-w-5xl rounded-xl overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-gray-800/60 shadow-xl"
+          style={{ minHeight: "440px" }}
+        >
+          {currentPhoto?.url && (
             <div
-              className="w-full h-full flex items-center justify-center cursor-pointer"
-              onClick={() =>
-                openPhotoViewer(currentPhoto, {
-                  subtitle: currentPhoto?.date ? formatDate(currentPhoto.date) : undefined,
-                })
-              }
-            >
-              <Camera className="w-24 h-24 text-gray-400" />
-            </div>
+              className="absolute inset-0 bg-center bg-cover blur-2xl scale-110 opacity-60"
+              style={viewerBackgroundStyle}
+              aria-hidden
+            />
           )}
 
+          <div className="relative z-10 flex h-[440px] items-center justify-center px-6">
+            {currentPhoto?.url ? (
+              <img
+                src={currentPhoto.url}
+                alt={currentPhoto.description}
+                className="max-h-full w-auto max-w-full object-contain cursor-pointer drop-shadow-2xl"
+                onClick={() =>
+                  openPhotoViewer(currentPhoto, {
+                    subtitle: currentPhoto.date ? formatDate(currentPhoto.date) : undefined,
+                  })
+                }
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center cursor-pointer"
+                onClick={() =>
+                  openPhotoViewer(currentPhoto, {
+                    subtitle: currentPhoto?.date ? formatDate(currentPhoto.date) : undefined,
+                  })
+                }
+              >
+                <Camera className="w-24 h-24 text-gray-400" />
+              </div>
+            )}
+          </div>
+
           {canEditCurrentPhoto && (
-            <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-10">
+            <div className="absolute bottom-3 right-3 z-30 flex flex-col items-end gap-2">
               <button
                 type="button"
                 onClick={handleSetPhotoAsPrimary}
@@ -1865,19 +1884,20 @@ const TreeDetail = () => {
 
           <button
             onClick={prevPhoto}
-            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
+            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow z-20"
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
           <button
             onClick={nextPhoto}
-            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow"
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 shadow z-20"
           >
             <ChevronRight className="w-6 h-6" />
           </button>
 
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3 pointer-events-none z-0">
-            <div className="text-white text-sm">
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" aria-hidden />
+            <div className="relative text-white text-sm p-3">
               {currentPhoto?.date ? (
                 <p className="opacity-80">{formatDate(currentPhoto.date)}</p>
               ) : (
