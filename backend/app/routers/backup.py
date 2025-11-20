@@ -341,10 +341,18 @@ def _import_rows(
             )
         )
 
+    update_lookup = {update.id: update for update in update_objects}
     measurement_objects = []
+    skipped_measurements = 0
     for row in measurement_rows:
         update_id = _parse_int(row.get("update_id"))
         bonsai_id = _require_int(row.get("bonsai_id"), "measurements.bonsai_id")
+
+        update = update_lookup.get(update_id)
+        if not update or update.bonsai_id != bonsai_id:
+            skipped_measurements += 1
+            continue
+
         measurement_objects.append(
             models.Measurement(
                 id=_require_int(row.get("id"), "measurements.id"),
@@ -425,6 +433,8 @@ def _import_rows(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to import data: {exc}",
         ) from exc
+
+    return {"skipped_measurements": skipped_measurements}
 
 
 @router.get("/export")
@@ -1252,7 +1262,7 @@ async def import_backup(
                         graveyard_rows,
                     ) = _collect_rows_v1(data_dir)
 
-                _import_rows(
+                import_result = _import_rows(
                     db,
                     species_rows,
                     bonsai_rows,
@@ -1267,4 +1277,13 @@ async def import_backup(
     except zipfile.BadZipFile as exc:  # pragma: no cover - defensive programming
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ZIP archive") from exc
 
-    return {"detail": "Import completed successfully."}
+    detail = "Import completed successfully."
+
+    skipped_measurements = (import_result or {}).get("skipped_measurements", 0)
+    if skipped_measurements:
+        detail = (
+            f"{detail} Skipped {skipped_measurements} "
+            "measurement(s) missing valid updates."
+        )
+
+    return {"detail": detail}

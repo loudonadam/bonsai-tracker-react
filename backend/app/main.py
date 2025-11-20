@@ -35,22 +35,23 @@ def _ensure_schema_migrations() -> None:
     with SessionLocal() as session:
         orphaned = (
             session.query(models.Measurement)
-            .filter(models.Measurement.update_id.is_(None))
+            .outerjoin(
+                models.BonsaiUpdate, models.Measurement.update_id == models.BonsaiUpdate.id
+            )
+            .filter(
+                (models.Measurement.update_id.is_(None))
+                | (models.BonsaiUpdate.id.is_(None))
+                | (
+                    models.BonsaiUpdate.bonsai_id
+                    != models.Measurement.bonsai_id
+                )
+            )
             .all()
         )
-        for measurement in orphaned:
-            performed_at = measurement.measured_at or measurement.created_at
-            update = models.BonsaiUpdate(
-                bonsai_id=measurement.bonsai_id,
-                title="Measurement recorded",
-                description=measurement.notes,
-                performed_at=performed_at,
-            )
-            session.add(update)
-            session.flush()
-            measurement.update_id = update.id
-            session.add(measurement)
+
         if orphaned:
+            for measurement in orphaned:
+                session.delete(measurement)
             session.commit()
 
 
