@@ -93,10 +93,19 @@ class MeasurementBase(BaseModel):
     trunk_diameter_cm: Optional[float] = None
     canopy_width_cm: Optional[float] = None
     notes: Optional[str] = None
+    update_id: Optional[int] = Field(default=None, ge=1)
 
 
 class MeasurementCreate(MeasurementBase):
-    pass
+    update_id: int
+
+
+class MeasurementUpdate(BaseModel):
+    measured_at: Optional[datetime] = None
+    height_cm: Optional[float] = None
+    trunk_diameter_cm: Optional[float] = None
+    canopy_width_cm: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class MeasurementOut(MeasurementBase):

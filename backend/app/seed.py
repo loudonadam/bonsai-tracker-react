@@ -69,16 +69,6 @@ def seed_database(session: Session):
         species.tree_count += 1
         session.flush()
 
-        measurement = models.Measurement(
-            bonsai_id=bonsai.id,
-            measured_at=datetime.utcnow(),
-            trunk_diameter_cm=15.0,
-            height_cm=55.0,
-            canopy_width_cm=40.0,
-            notes="Initial measurement",
-        )
-        session.add(measurement)
-
         update = models.BonsaiUpdate(
             bonsai_id=bonsai.id,
             title="Wiring session",
@@ -86,6 +76,19 @@ def seed_database(session: Session):
             performed_at=datetime.utcnow(),
         )
         session.add(update)
+
+        session.flush()
+
+        measurement = models.Measurement(
+            bonsai_id=bonsai.id,
+            update_id=update.id,
+            measured_at=update.performed_at,
+            trunk_diameter_cm=15.0,
+            height_cm=55.0,
+            canopy_width_cm=40.0,
+            notes="Initial measurement",
+        )
+        session.add(measurement)
 
         notification = models.Notification(
             bonsai_id=bonsai.id,

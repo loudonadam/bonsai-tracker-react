@@ -3,9 +3,11 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 
 from .config import settings
-from .database import Base, engine
+from .database import Base, SessionLocal, engine
+from . import models
 from .routers import (
     accolades,
     backup,
@@ -17,7 +19,42 @@ from .routers import (
     updates,
 )
 
-Base.metadata.create_all(bind=engine)
+
+def _ensure_schema_migrations() -> None:
+    inspector = inspect(engine)
+
+    if inspector.has_table("measurements"):
+        columns = {column["name"] for column in inspector.get_columns("measurements")}
+        if "update_id" not in columns:
+            with engine.connect() as connection:
+                connection.execute(text("ALTER TABLE measurements ADD COLUMN update_id INTEGER"))
+                connection.commit()
+
+    Base.metadata.create_all(bind=engine)
+
+    with SessionLocal() as session:
+        orphaned = (
+            session.query(models.Measurement)
+            .filter(models.Measurement.update_id.is_(None))
+            .all()
+        )
+        for measurement in orphaned:
+            performed_at = measurement.measured_at or measurement.created_at
+            update = models.BonsaiUpdate(
+                bonsai_id=measurement.bonsai_id,
+                title="Measurement recorded",
+                description=measurement.notes,
+                performed_at=performed_at,
+            )
+            session.add(update)
+            session.flush()
+            measurement.update_id = update.id
+            session.add(measurement)
+        if orphaned:
+            session.commit()
+
+
+_ensure_schema_migrations()
 
 app = FastAPI(title="Bonsai Tracker API", version="1.0.0")
 

@@ -106,6 +106,9 @@ class BonsaiUpdate(Base):
 
     bonsai: Mapped[Bonsai] = relationship("Bonsai", back_populates="updates")
     photos: Mapped[list["Photo"]] = relationship("Photo", back_populates="update")
+    measurements: Mapped[list["Measurement"]] = relationship(
+        "Measurement", back_populates="update", cascade="all, delete-orphan"
+    )
 
 
 class Measurement(Base):
@@ -113,6 +116,9 @@ class Measurement(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bonsai_id: Mapped[int] = mapped_column(Integer, ForeignKey("bonsai.id"), nullable=False)
+    update_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("bonsai_updates.id"), nullable=True
+    )
     measured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     height_cm: Mapped[Optional[float]] = mapped_column(Float)
     trunk_diameter_cm: Mapped[Optional[float]] = mapped_column(Float)
@@ -123,6 +129,9 @@ class Measurement(Base):
     )
 
     bonsai: Mapped[Bonsai] = relationship("Bonsai", back_populates="measurements")
+    update: Mapped[Optional[BonsaiUpdate]] = relationship(
+        "BonsaiUpdate", back_populates="measurements"
+    )
 
 
 class Photo(Base):
