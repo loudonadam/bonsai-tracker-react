@@ -27,6 +27,7 @@ from sqlalchemy import (
     create_engine,
     func,
     select,
+    text,
 )
 from sqlalchemy.orm import Session, declarative_base, joinedload, relationship, sessionmaker
 
@@ -544,6 +545,41 @@ def _refresh_species_counts(session: Session) -> None:
         species.tree_count = counts.get(species.id, 0)
 
 
+def _confirm_data_reset(target_db: str | Path) -> None:
+    target = target_db if isinstance(target_db, str) else target_db.as_posix()
+    prompt = (
+        f"This will ERASE all existing data in '{target}'.\n"
+        "Type 'erase' to continue: "
+    )
+    if input(prompt).strip().lower() != "erase":
+        raise SystemExit("Aborting import; confirmation not received.")
+
+
+def _clear_existing_data(session: Session) -> None:
+    """Remove all existing application data before importing legacy records."""
+
+    logging.info("Clearing existing bonsai tracker data from target database")
+
+    # Disable FK enforcement to simplify delete ordering across related tables.
+    session.execute(text("PRAGMA foreign_keys = OFF"))
+
+    tables = [
+        "accolades",
+        "photos",
+        "measurements",
+        "bonsai_updates",
+        "notifications",
+        "graveyard_entries",
+        "bonsai",
+        "species",
+    ]
+
+    for table in tables:
+        session.execute(text(f"DELETE FROM {table}"))
+
+    session.execute(text("PRAGMA foreign_keys = ON"))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = _get_arg_parser().parse_args()
@@ -561,7 +597,12 @@ def main() -> None:
     media_root = args.media_root
     media_root.mkdir(parents=True, exist_ok=True)
 
+    if args.commit:
+        _confirm_data_reset(args.target_db)
+
     with legacy_session_maker() as legacy_session, target_session_maker() as target_session:
+        _clear_existing_data(target_session)
+
         legacy_trees = (
             legacy_session.execute(
                 select(LegacyTree).options(
