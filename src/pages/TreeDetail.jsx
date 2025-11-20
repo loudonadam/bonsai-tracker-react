@@ -1309,7 +1309,7 @@ const TreeDetail = () => {
   const openEditUpdateModal = (update) => {
     setNewUpdate({
       ...initialUpdateState,
-      date: update.date,
+      date: formatInputDate(update.date),
       girth:
         typeof update.girth === "number"
           ? update.girth.toString()
