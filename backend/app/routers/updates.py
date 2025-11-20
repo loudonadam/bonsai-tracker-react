@@ -123,10 +123,12 @@ def update_update(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Update not found")
 
     data = payload.model_dump(exclude_unset=True)
+    measurement_payload = data.pop("measurement", None) or payload.measurement
+
     for key, value in data.items():
         setattr(update, key, value)
 
-    _sync_update_measurement(db, update, payload.measurement)
+    _sync_update_measurement(db, update, measurement_payload)
     db.add(update)
     db.commit()
     db.refresh(update)
