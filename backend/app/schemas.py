@@ -70,13 +70,14 @@ class BonsaiUpdateBase(BaseModel):
 
 
 class BonsaiUpdateCreate(BonsaiUpdateBase):
-    pass
+    measurement: Optional["MeasurementPayload"] = None
 
 
 class BonsaiUpdatePatch(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     performed_at: Optional[datetime] = None
+    measurement: Optional["MeasurementPayload"] = None
 
 
 class BonsaiUpdateOut(BonsaiUpdateBase):
@@ -85,18 +86,21 @@ class BonsaiUpdateOut(BonsaiUpdateBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    measurement: Optional["MeasurementOut"] = None
 
 
-class MeasurementBase(BaseModel):
+class MeasurementPayload(BaseModel):
     measured_at: Optional[datetime] = None
-    height_cm: Optional[float] = None
     trunk_diameter_cm: Optional[float] = None
-    canopy_width_cm: Optional[float] = None
     notes: Optional[str] = None
 
 
-class MeasurementCreate(MeasurementBase):
-    pass
+class MeasurementBase(MeasurementPayload):
+    update_id: Optional[int] = Field(default=None, ge=1)
+
+
+class MeasurementCreate(MeasurementPayload):
+    update_id: int = Field(ge=1)
 
 
 class MeasurementOut(MeasurementBase):

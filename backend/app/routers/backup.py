@@ -333,10 +333,9 @@ def _import_rows(
             models.Measurement(
                 id=_require_int(row.get("id"), "measurements.id"),
                 bonsai_id=_require_int(row.get("bonsai_id"), "measurements.bonsai_id"),
+                update_id=_parse_int(row.get("update_id")),
                 measured_at=_parse_datetime(row.get("measured_at")),
-                height_cm=_parse_float(row.get("height_cm")),
                 trunk_diameter_cm=_parse_float(row.get("trunk_diameter_cm")),
-                canopy_width_cm=_parse_float(row.get("canopy_width_cm")),
                 notes=row.get("notes") or None,
                 created_at=_parse_datetime(row.get("created_at")) or datetime.utcnow(),
             )
@@ -410,8 +409,8 @@ def _import_rows(
 
         db.add_all(species_objects)
         db.add_all(bonsai_objects)
-        db.add_all(measurement_objects)
         db.add_all(update_objects)
+        db.add_all(measurement_objects)
         db.add_all(notification_objects)
         db.add_all(graveyard_objects)
         db.add_all(photo_objects)
@@ -469,7 +468,7 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
             .options(
                 selectinload(models.Bonsai.species),
                 selectinload(models.Bonsai.measurements),
-                selectinload(models.Bonsai.updates),
+                selectinload(models.Bonsai.updates).selectinload(models.BonsaiUpdate.measurement),
                 selectinload(models.Bonsai.photos),
                 selectinload(models.Bonsai.notifications),
                 selectinload(models.Bonsai.graveyard_entry),
@@ -549,25 +548,19 @@ def export_backup(db: Session = Depends(get_db)) -> StreamingResponse:
                 f"{tree_dir}/measurements.csv",
                 [
                     "id",
+                    "update_id",
                     "measured_at",
-                    "height_cm",
                     "trunk_diameter_cm",
-                    "canopy_width_cm",
                     "notes",
                     "created_at",
                 ],
                 (
                     {
                         "id": measurement.id,
+                        "update_id": measurement.update_id or "",
                         "measured_at": _iso_datetime(measurement.measured_at),
-                        "height_cm": measurement.height_cm
-                        if measurement.height_cm is not None
-                        else "",
                         "trunk_diameter_cm": measurement.trunk_diameter_cm
                         if measurement.trunk_diameter_cm is not None
-                        else "",
-                        "canopy_width_cm": measurement.canopy_width_cm
-                        if measurement.canopy_width_cm is not None
                         else "",
                         "notes": measurement.notes or "",
                         "created_at": _iso_datetime(measurement.created_at),
@@ -779,7 +772,7 @@ def export_single_bonsai(bonsai_id: int, db: Session = Depends(get_db)) -> Strea
         .options(
             selectinload(models.Bonsai.species),
             selectinload(models.Bonsai.measurements),
-            selectinload(models.Bonsai.updates),
+            selectinload(models.Bonsai.updates).selectinload(models.BonsaiUpdate.measurement),
             selectinload(models.Bonsai.photos),
             selectinload(models.Bonsai.notifications),
             selectinload(models.Bonsai.graveyard_entry),
@@ -884,23 +877,19 @@ def export_single_bonsai(bonsai_id: int, db: Session = Depends(get_db)) -> Strea
             f"{tree_dir}/measurements.csv",
             [
                 "id",
+                "update_id",
                 "measured_at",
-                "height_cm",
                 "trunk_diameter_cm",
-                "canopy_width_cm",
                 "notes",
                 "created_at",
             ],
             (
                 {
                     "id": measurement.id,
+                    "update_id": measurement.update_id or "",
                     "measured_at": _iso_datetime(measurement.measured_at),
-                    "height_cm": measurement.height_cm if measurement.height_cm is not None else "",
                     "trunk_diameter_cm": measurement.trunk_diameter_cm
                     if measurement.trunk_diameter_cm is not None
-                    else "",
-                    "canopy_width_cm": measurement.canopy_width_cm
-                    if measurement.canopy_width_cm is not None
                     else "",
                     "notes": measurement.notes or "",
                     "created_at": _iso_datetime(measurement.created_at),
