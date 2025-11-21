@@ -1,4 +1,8 @@
 export const roundToTenth = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
   const numeric = Number(value);
 
   if (!Number.isFinite(numeric)) {
