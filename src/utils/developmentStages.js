@@ -9,18 +9,9 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     dotClasses: "bg-amber-400",
   },
   {
-    value: "initial-styling",
-    label: "Initial Styling",
-    shortLabel: "Initial Styling",
-    badgeClasses:
-      "bg-green-50 text-green-700 border border-green-200",
-    textClasses: "text-green-700",
-    dotClasses: "bg-green-400",
-  },
-  {
     value: "early-development",
     label: "Early Development",
-    shortLabel: "Early Dev.",
+    shortLabel: "Early Development",
     badgeClasses:
       "bg-emerald-50 text-emerald-700 border border-emerald-200",
     textClasses: "text-emerald-700",
@@ -36,7 +27,7 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
     dotClasses: "bg-teal-400",
   },
   {
-    value: "show-eligible",
+    value: "mature",
     label: "Mature",
     shortLabel: "Mature",
     badgeClasses:
@@ -48,18 +39,24 @@ export const DEVELOPMENT_STAGE_OPTIONS = [
 
 export const DEFAULT_STAGE_VALUE = DEVELOPMENT_STAGE_OPTIONS[0].value;
 
+const STAGE_ALIASES = {
+  "initial-styling": "early-development",
+  "show-eligible": "mature",
+};
+
 export const getStageMeta = (stageValue) => {
   if (!stageValue) {
     return DEVELOPMENT_STAGE_OPTIONS[0];
   }
 
   const normalizedValue = stageValue.toLowerCase();
+  const resolvedValue = STAGE_ALIASES[normalizedValue] ?? normalizedValue;
 
   return (
     DEVELOPMENT_STAGE_OPTIONS.find(
       (option) =>
-        option.value === normalizedValue ||
-        option.label.toLowerCase() === normalizedValue
+        option.value === resolvedValue ||
+        option.label.toLowerCase() === resolvedValue
     ) || DEVELOPMENT_STAGE_OPTIONS[0]
   );
 };

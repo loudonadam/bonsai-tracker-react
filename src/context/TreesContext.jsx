@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { DEFAULT_STAGE_VALUE } from "../utils/developmentStages";
 import { apiClient, getApiBaseUrl } from "../services/apiClient";
+import { roundToTenth } from "../utils/numberFormatting";
 
 const TreesContext = createContext(null);
 
@@ -81,7 +82,7 @@ const mapMeasurement = (entry) => ({
   id: entry.id,
   updateId: entry.update_id ?? entry.updateId ?? null,
   measuredAt: entry.measured_at ?? entry.created_at,
-  trunkDiameter: entry.trunk_diameter_cm,
+  trunkDiameter: roundToTenth(entry.trunk_diameter_cm),
   notes: entry.notes ?? "",
 });
 
@@ -93,7 +94,7 @@ const mapUpdate = (entry) => ({
   workPerformed: entry.description ?? entry.title,
   performedAt: entry.performed_at ?? entry.created_at,
   measurement: entry.measurement ? mapMeasurement(entry.measurement) : null,
-  girth: entry.measurement?.trunk_diameter_cm ?? null,
+  girth: entry.measurement ? roundToTenth(entry.measurement.trunk_diameter_cm) : null,
 });
 
 const mapNotification = (entry) => ({
@@ -163,7 +164,7 @@ const mapBonsai = (entry) => {
       entry.latest_update?.performed_at ||
       entry.latest_update?.created_at ||
       entry.updated_at,
-    currentGirth: entry.latest_measurement?.trunk_diameter_cm ?? null,
+    currentGirth: roundToTenth(entry.latest_measurement?.trunk_diameter_cm),
     photoUrl: primaryPhoto?.thumbnailUrl || primaryPhoto?.url || null,
     fullPhotoUrl: primaryPhoto?.fullUrl || null,
     photos,

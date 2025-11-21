@@ -5,6 +5,7 @@ import {
   calculateAgeInYears,
   formatDisplayDate,
 } from "../utils/dateUtils";
+import { formatTrunkWidth } from "../utils/numberFormatting";
 
 // TreeCard Component - displays a single bonsai tree
 const TreeCard = ({
@@ -51,12 +52,12 @@ const TreeCard = ({
   }, [treeAgeYears]);
 
   const trunkWidthLabel = useMemo(() => {
-    const girth = Number(tree.currentGirth);
-    if (!Number.isFinite(girth)) {
+    const girth = formatTrunkWidth(tree.currentGirth);
+    if (!girth) {
       return null;
     }
 
-    return `${girth.toFixed(1)} cm trunk`;
+    return `${girth} cm trunk`;
   }, [tree.currentGirth]);
 
   const formattedLastUpdate = useMemo(

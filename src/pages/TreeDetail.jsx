@@ -37,6 +37,7 @@ import {
   calculateAgeInYears,
   compareByTimestampDesc,
 } from "../utils/dateUtils";
+import { formatTrunkWidth, roundToTenth } from "../utils/numberFormatting";
 import ReactMarkdown from "react-markdown";
 import remarkSimpleGfmTables from "../utils/remarkSimpleGfmTables";
 import markdownComponents from "../utils/markdownComponents";
@@ -304,12 +305,12 @@ const TreeDetail = () => {
   }, [ageYears]);
 
   const widthLabel = useMemo(() => {
-    const girth = Number(tree.currentGirth);
-    if (!Number.isFinite(girth)) {
+    const girth = formatTrunkWidth(tree.currentGirth);
+    if (!girth) {
       return "Trunk width not recorded";
     }
 
-    return `${girth.toFixed(1)} cm trunk`;
+    return `${girth} cm trunk`;
   }, [tree.currentGirth]);
 
   const latestUpdate = tree.updates[0];
@@ -324,7 +325,10 @@ const TreeDetail = () => {
     if (!hasCurrentWidth || !hasBaselineWidth) {
       return "—";
     }
-    const growthDelta = tree.currentGirth - earliestUpdate.girth;
+    const growthDelta = roundToTenth(tree.currentGirth - earliestUpdate.girth);
+    if (growthDelta === null) {
+      return "—";
+    }
     const prefix = growthDelta >= 0 ? "+" : "";
     return `${prefix}${growthDelta.toFixed(1)} cm`;
   })();
@@ -392,14 +396,16 @@ const TreeDetail = () => {
           return null;
         }
 
+        const roundedMeasurement = roundToTenth(measurement.trunkDiameter);
+
+        if (roundedMeasurement === null || roundedMeasurement === 0) {
+          return null;
+        }
+
         const parsedDate = new Date(measurement.measuredAt);
         const timestamp = parsedDate.getTime();
 
         if (Number.isNaN(timestamp)) {
-          return null;
-        }
-
-        if (measurement.trunkDiameter === 0) {
           return null;
         }
 
@@ -410,7 +416,7 @@ const TreeDetail = () => {
             day: "numeric",
             year: "numeric",
           }),
-          measurement: measurement.trunkDiameter,
+          measurement: roundedMeasurement,
         };
       })
       .filter(Boolean)
@@ -627,6 +633,7 @@ const TreeDetail = () => {
       return;
     }
 
+    const originalSpeciesId = tree?.speciesId ?? null;
     let speciesId = tree?.speciesId ?? null;
     let selectedSpecies = null;
 
@@ -682,6 +689,10 @@ const TreeDetail = () => {
         development_stage: normalizedStage,
         species_id: speciesId,
       });
+
+      if (speciesId !== originalSpeciesId) {
+        await refreshSpecies();
+      }
 
       setTree(updated);
       setEditData({
@@ -1961,11 +1972,15 @@ const TreeDetail = () => {
                 dataKey="measurement"
                 tick={{ fontSize: 12, fill: "#4b5563" }}
                 tickMargin={8}
+                tickFormatter={(value) => formatTrunkWidth(value) ?? value}
                 width={60}
                 label={{ value: "Trunk Width (cm)", angle: -90, position: "insideLeft", fill: "#4b5563", fontSize: 12 }}
               />
               <Tooltip
-                formatter={(value) => [`${value} cm`, "Trunk Width"]}
+                formatter={(value) => [
+                  `${formatTrunkWidth(value) ?? value} cm`,
+                  "Trunk Width",
+                ]}
                 labelFormatter={(label) =>
                   new Date(label).toLocaleDateString("en-US", {
                     month: "long",
@@ -2011,52 +2026,56 @@ const TreeDetail = () => {
             No updates yet. Add one to start tracking this tree.
           </p>
         ) : (
-          tree.updates.map((update) => (
-            <div key={update.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow transition">
-              <div className="flex items-start justify-between mb-2">
-                <div className="text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {formatDate(update.date)}
-                  </div>
-                  {typeof update.girth === "number" && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <Ruler className="w-4 h-4" />
-                      <span>{update.girth} cm width</span>
+          tree.updates.map((update) => {
+            const formattedGirth = formatTrunkWidth(update.girth);
+
+            return (
+              <div key={update.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow transition">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      {formatDate(update.date)}
                     </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEditUpdateModal(update)}
-                    className="text-gray-400 hover:text-gray-600"
-                    aria-label="Edit tree update"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => requestDeleteUpdate(update)}
-                    className="text-gray-400 transition hover:text-red-600 disabled:opacity-50"
-                    aria-label="Delete tree update"
-                    disabled={
-                      isDeletingUpdateId === update.id ||
-                      (deleteUpdateConfirm.open &&
-                        deleteUpdateConfirm.update?.id === update.id)
-                    }
-                  >
-                    {isDeletingUpdateId === update.id ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
+                    {formattedGirth && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Ruler className="w-4 h-4" />
+                        <span>{formattedGirth} cm width</span>
+                      </div>
                     )}
-                  </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditUpdateModal(update)}
+                      className="text-gray-400 hover:text-gray-600"
+                      aria-label="Edit tree update"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => requestDeleteUpdate(update)}
+                      className="text-gray-400 transition hover:text-red-600 disabled:opacity-50"
+                      aria-label="Delete tree update"
+                      disabled={
+                        isDeletingUpdateId === update.id ||
+                        (deleteUpdateConfirm.open &&
+                          deleteUpdateConfirm.update?.id === update.id)
+                      }
+                    >
+                      {isDeletingUpdateId === update.id ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
+                <p className="text-gray-700">{update.workPerformed}</p>
               </div>
-              <p className="text-gray-700">{update.workPerformed}</p>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
