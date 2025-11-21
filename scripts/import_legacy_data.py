@@ -27,6 +27,7 @@ from sqlalchemy import (
     create_engine,
     func,
     select,
+    text,
 )
 from sqlalchemy.orm import Session, declarative_base, joinedload, relationship, sessionmaker
 
@@ -102,6 +103,7 @@ class BonsaiUpdate(TargetBase):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     bonsai = relationship("Bonsai", back_populates="updates")
+    measurement = relationship("Measurement", back_populates="update", uselist=False)
 
 
 class Measurement(TargetBase):
@@ -109,6 +111,7 @@ class Measurement(TargetBase):
 
     id = Column(Integer, primary_key=True)
     bonsai_id = Column(Integer, ForeignKey("bonsai.id"), nullable=False)
+    update_id = Column(Integer, ForeignKey("bonsai_updates.id"))
     measured_at = Column(DateTime, default=datetime.utcnow)
     height_cm = Column(Float)
     trunk_diameter_cm = Column(Float)
@@ -117,6 +120,7 @@ class Measurement(TargetBase):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     bonsai = relationship("Bonsai", back_populates="measurements")
+    update = relationship("BonsaiUpdate", back_populates="measurement")
 
 
 class Photo(TargetBase):
@@ -353,16 +357,44 @@ def _ensure_unique_name(session: Session, desired_name: str) -> str:
     return candidate
 
 
-def _attach_measurement(session: Session, bonsai: Bonsai, value_cm: Optional[float], measured_at: Optional[datetime], note: str) -> None:
+def _attach_measurement(
+    session: Session,
+    bonsai: Bonsai,
+    value_cm: Optional[float],
+    measured_at: Optional[datetime],
+    note: str,
+    update: Optional[BonsaiUpdate] = None,
+) -> tuple[Optional[Measurement], bool]:
     if value_cm is None:
-        return
+        return None, False
+
+    target_update = update
+    new_update_created = False
+
+    if target_update is None:
+        performed_at = measured_at or datetime.utcnow()
+        target_update = BonsaiUpdate(
+            bonsai=bonsai,
+            title="Legacy Measurement",
+            description=note,
+            performed_at=performed_at,
+            created_at=performed_at,
+            updated_at=performed_at,
+        )
+        session.add(target_update)
+        session.flush()
+        new_update_created = True
+
     measurement = Measurement(
         bonsai=bonsai,
-        measured_at=measured_at or datetime.utcnow(),
+        update=target_update,
+        measured_at=measured_at or target_update.performed_at or datetime.utcnow(),
         trunk_diameter_cm=value_cm,
         notes=note,
+        created_at=measured_at or target_update.created_at or datetime.utcnow(),
     )
     session.add(measurement)
+    return measurement, new_update_created
 
 
 def _resolve_image_path(images_dir: Path, stored_path: str) -> Optional[Path]:
@@ -429,12 +461,14 @@ def _import_update(session: Session, bonsai: Bonsai, legacy_update: LegacyTreeUp
         updated_at=performed_at,
     )
     session.add(update)
+    session.flush()
     _attach_measurement(
         session,
         bonsai,
         _mm_to_cm(legacy_update.girth),
         performed_at,
         note="Legacy girth measurement",
+        update=update,
     )
     return update
 
@@ -467,7 +501,7 @@ def _import_tree(
     session.add(bonsai)
     session.flush()  # obtain bonsai.id for related rows
 
-    _attach_measurement(
+    _, measurement_update_created = _attach_measurement(
         session,
         bonsai,
         _mm_to_cm(legacy_tree.current_girth),
@@ -477,6 +511,9 @@ def _import_tree(
 
     for update in legacy_tree.updates:
         _import_update(session, bonsai, update)
+        result_counts["updates"] += 1
+
+    if measurement_update_created:
         result_counts["updates"] += 1
 
     for photo in legacy_tree.photos:
@@ -508,6 +545,41 @@ def _refresh_species_counts(session: Session) -> None:
         species.tree_count = counts.get(species.id, 0)
 
 
+def _confirm_data_reset(target_db: str | Path) -> None:
+    target = target_db if isinstance(target_db, str) else target_db.as_posix()
+    prompt = (
+        f"This will ERASE all existing data in '{target}'.\n"
+        "Type 'erase' to continue: "
+    )
+    if input(prompt).strip().lower() != "erase":
+        raise SystemExit("Aborting import; confirmation not received.")
+
+
+def _clear_existing_data(session: Session) -> None:
+    """Remove all existing application data before importing legacy records."""
+
+    logging.info("Clearing existing bonsai tracker data from target database")
+
+    # Disable FK enforcement to simplify delete ordering across related tables.
+    session.execute(text("PRAGMA foreign_keys = OFF"))
+
+    tables = [
+        "accolades",
+        "photos",
+        "measurements",
+        "bonsai_updates",
+        "notifications",
+        "graveyard_entries",
+        "bonsai",
+        "species",
+    ]
+
+    for table in tables:
+        session.execute(text(f"DELETE FROM {table}"))
+
+    session.execute(text("PRAGMA foreign_keys = ON"))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = _get_arg_parser().parse_args()
@@ -525,7 +597,12 @@ def main() -> None:
     media_root = args.media_root
     media_root.mkdir(parents=True, exist_ok=True)
 
+    if args.commit:
+        _confirm_data_reset(args.target_db)
+
     with legacy_session_maker() as legacy_session, target_session_maker() as target_session:
+        _clear_existing_data(target_session)
+
         legacy_trees = (
             legacy_session.execute(
                 select(LegacyTree).options(
