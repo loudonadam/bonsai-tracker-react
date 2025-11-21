@@ -124,6 +124,8 @@ def update_update(
 
     data = payload.model_dump(exclude_unset=True)
     measurement_payload = data.pop("measurement", None) or payload.measurement
+    if isinstance(measurement_payload, dict):
+        measurement_payload = schemas.MeasurementPayload.model_validate(measurement_payload)
 
     for key, value in data.items():
         setattr(update, key, value)
