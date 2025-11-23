@@ -37,7 +37,15 @@ import {
 } from "../utils/dateUtils";
 
 const DEFAULT_COLLECTION_NAME = "Bonsai Tracker";
-const PAGE_SIZE = 12;
+const ROWS_PER_PAGE = 3;
+
+const getGridColumnsForWidth = (width) => {
+  if (width >= 1536) return 5;
+  if (width >= 1280) return 4;
+  if (width >= 1024) return 3;
+  if (width >= 640) return 2;
+  return 2;
+};
 
 const getStoredCollectionName = () => {
   if (typeof window === "undefined") {
@@ -144,6 +152,21 @@ const Home = () => {
   const [sortOption, setSortOption] = useState("recent");
   const [currentPage, setCurrentPage] = useState(1);
 
+  const [gridColumns, setGridColumns] = useState(() =>
+    typeof window !== "undefined"
+      ? getGridColumnsForWidth(window.innerWidth)
+      : getGridColumnsForWidth(1280)
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setGridColumns(getGridColumnsForWidth(window.innerWidth));
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const [reminders, setReminders] = useState(() => {
     const stored = loadStoredReminders();
     if (stored.length > 0) {
@@ -222,6 +245,9 @@ const Home = () => {
             ? tree.developmentStage.toLowerCase()
             : DEFAULT_STAGE_VALUE;
         const stageMeta = getStageMeta(stageValue);
+        const ageTimestamp =
+          getSafeTimestamp(tree.originDate ?? tree.acquisitionDate, Number.MAX_SAFE_INTEGER) ??
+          Number.MAX_SAFE_INTEGER;
 
         return {
           ...tree,
@@ -230,7 +256,7 @@ const Home = () => {
           stageValue,
           stageMeta,
           lastUpdateTime: getSafeTimestamp(tree.lastUpdate, 0) ?? 0,
-          acquisitionTime: getSafeTimestamp(tree.acquisitionDate, 0) ?? 0,
+          acquisitionTime: ageTimestamp,
         };
       }),
     [trees]
@@ -390,8 +416,12 @@ const Home = () => {
   }, [normalizedTrees, searchQuery, sortOption, sorters]);
 
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filteredTrees.length / PAGE_SIZE)),
-    [filteredTrees.length]
+    () =>
+      Math.max(
+        1,
+        Math.ceil(filteredTrees.length / Math.max(1, gridColumns * ROWS_PER_PAGE))
+      ),
+    [filteredTrees.length, gridColumns]
   );
 
   useEffect(() => {
@@ -405,19 +435,21 @@ const Home = () => {
   }, [currentPage, totalPages]);
 
   const paginatedTrees = useMemo(() => {
-    const startIndex = (currentPage - 1) * PAGE_SIZE;
-    return filteredTrees.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [filteredTrees, currentPage]);
+    const pageSize = Math.max(1, gridColumns * ROWS_PER_PAGE);
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredTrees.slice(startIndex, startIndex + pageSize);
+  }, [filteredTrees, currentPage, gridColumns]);
 
   const paginationRange = useMemo(() => {
     if (filteredTrees.length === 0) {
       return { start: 0, end: 0 };
     }
 
-    const start = (currentPage - 1) * PAGE_SIZE + 1;
-    const end = Math.min(currentPage * PAGE_SIZE, filteredTrees.length);
+    const pageSize = Math.max(1, gridColumns * ROWS_PER_PAGE);
+    const start = (currentPage - 1) * pageSize + 1;
+    const end = Math.min(currentPage * pageSize, filteredTrees.length);
     return { start, end };
-  }, [currentPage, filteredTrees.length]);
+  }, [currentPage, filteredTrees.length, gridColumns]);
 
   // ─── Render ───────────────────────────────────────────
   return (
