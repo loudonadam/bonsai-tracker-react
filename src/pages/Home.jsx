@@ -37,6 +37,7 @@ import {
 } from "../utils/dateUtils";
 
 const DEFAULT_COLLECTION_NAME = "Bonsai Tracker";
+const PAGE_SIZE = 12;
 
 const getStoredCollectionName = () => {
   if (typeof window === "undefined") {
@@ -141,6 +142,7 @@ const Home = () => {
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [showAddTree, setShowAddTree] = useState(false);
   const [sortOption, setSortOption] = useState("recent");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [reminders, setReminders] = useState(() => {
     const stored = loadStoredReminders();
@@ -211,6 +213,28 @@ const Home = () => {
       })),
     };
   }, [trees]);
+
+  const normalizedTrees = useMemo(
+    () =>
+      trees.map((tree) => {
+        const stageValue =
+          typeof tree.developmentStage === "string"
+            ? tree.developmentStage.toLowerCase()
+            : DEFAULT_STAGE_VALUE;
+        const stageMeta = getStageMeta(stageValue);
+
+        return {
+          ...tree,
+          normalizedName: tree.name?.toLowerCase() ?? "",
+          normalizedSpecies: (tree.species || "").toLowerCase(),
+          stageValue,
+          stageMeta,
+          lastUpdateTime: getSafeTimestamp(tree.lastUpdate, 0) ?? 0,
+          acquisitionTime: getSafeTimestamp(tree.acquisitionDate, 0) ?? 0,
+        };
+      }),
+    [trees]
+  );
 
   // ─── Reminder Helpers ───────────────────────────────────────────
   const addReminder = (reminder) => {
@@ -305,91 +329,95 @@ const Home = () => {
     }, {});
   }, []);
 
+  const sorters = useMemo(() => {
+    const sortByRecent = (a, b) => b.lastUpdateTime - a.lastUpdateTime;
+
+    return {
+      recent: sortByRecent,
+      stage: (a, b) => {
+        const aIndex = stageOrder[a.stageValue] ?? Number.MAX_SAFE_INTEGER;
+        const bIndex = stageOrder[b.stageValue] ?? Number.MAX_SAFE_INTEGER;
+
+        if (aIndex === bIndex) {
+          return sortByRecent(a, b);
+        }
+
+        return aIndex - bIndex;
+      },
+      age: (a, b) => {
+        if (a.acquisitionTime === b.acquisitionTime) {
+          return sortByRecent(a, b);
+        }
+
+        return a.acquisitionTime - b.acquisitionTime;
+      },
+      species: (a, b) => {
+        const speciesCompare = (a.normalizedSpecies || "").localeCompare(
+          b.normalizedSpecies || "",
+          undefined,
+          { sensitivity: "base" }
+        );
+
+        if (speciesCompare === 0) {
+          return sortByRecent(a, b);
+        }
+
+        return speciesCompare;
+      },
+    };
+  }, [stageOrder]);
+
   const filteredTrees = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
-    const matches = trees.filter((tree) => {
+    const matches = normalizedTrees.filter((tree) => {
       if (!normalizedQuery) {
         return true;
       }
 
-      const nameMatch = tree.name.toLowerCase().includes(normalizedQuery);
-      const speciesMatch = (tree.species || "")
-        .toLowerCase()
-        .includes(normalizedQuery);
-
-      const stageValue =
-        typeof tree.developmentStage === "string"
-          ? tree.developmentStage.toLowerCase()
-          : DEFAULT_STAGE_VALUE;
-      const stageMeta = getStageMeta(stageValue);
-
-      const stageMatch =
-        stageValue.includes(normalizedQuery) ||
-        stageMeta.label.toLowerCase().includes(normalizedQuery) ||
-        stageMeta.shortLabel.toLowerCase().includes(normalizedQuery);
-
-      return nameMatch || speciesMatch || stageMatch;
+      return (
+        tree.normalizedName.includes(normalizedQuery) ||
+        tree.normalizedSpecies.includes(normalizedQuery) ||
+        tree.stageValue.includes(normalizedQuery) ||
+        tree.stageMeta.label.toLowerCase().includes(normalizedQuery) ||
+        tree.stageMeta.shortLabel.toLowerCase().includes(normalizedQuery)
+      );
     });
 
-    const sortByRecent = (a, b) => {
-      const aTime = getSafeTimestamp(a.lastUpdate, 0) ?? 0;
-      const bTime = getSafeTimestamp(b.lastUpdate, 0) ?? 0;
-      return bTime - aTime;
-    };
+    const sorter = sorters[sortOption] ?? sorters.recent;
 
-    const sorted = [...matches].sort((a, b) => {
-      switch (sortOption) {
-        case "stage": {
-          const aStage =
-            typeof a.developmentStage === "string"
-              ? a.developmentStage.toLowerCase()
-              : DEFAULT_STAGE_VALUE;
-          const bStage =
-            typeof b.developmentStage === "string"
-              ? b.developmentStage.toLowerCase()
-              : DEFAULT_STAGE_VALUE;
+    return matches.length > 1 ? [...matches].sort(sorter) : matches;
+  }, [normalizedTrees, searchQuery, sortOption, sorters]);
 
-          const aIndex = stageOrder[aStage] ?? Number.MAX_SAFE_INTEGER;
-          const bIndex = stageOrder[bStage] ?? Number.MAX_SAFE_INTEGER;
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredTrees.length / PAGE_SIZE)),
+    [filteredTrees.length]
+  );
 
-          if (aIndex === bIndex) {
-            return sortByRecent(a, b);
-          }
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortOption]);
 
-          return aIndex - bIndex;
-        }
-        case "age": {
-          const aTime = getSafeTimestamp(a.acquisitionDate, 0) ?? 0;
-          const bTime = getSafeTimestamp(b.acquisitionDate, 0) ?? 0;
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
-          if (aTime === bTime) {
-            return sortByRecent(a, b);
-          }
+  const paginatedTrees = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredTrees.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredTrees, currentPage]);
 
-          return aTime - bTime;
-        }
-        case "species": {
-          const speciesCompare = (a.species || "").localeCompare(
-            b.species || "",
-            undefined,
-            { sensitivity: "base" }
-          );
+  const paginationRange = useMemo(() => {
+    if (filteredTrees.length === 0) {
+      return { start: 0, end: 0 };
+    }
 
-          if (speciesCompare === 0) {
-            return sortByRecent(a, b);
-          }
-
-          return speciesCompare;
-        }
-        case "recent":
-        default:
-          return sortByRecent(a, b);
-      }
-    });
-
-    return sorted;
-  }, [trees, searchQuery, sortOption, stageOrder]);
+    const start = (currentPage - 1) * PAGE_SIZE + 1;
+    const end = Math.min(currentPage * PAGE_SIZE, filteredTrees.length);
+    return { start, end };
+  }, [currentPage, filteredTrees.length]);
 
   // ─── Render ───────────────────────────────────────────
   return (
@@ -677,17 +705,47 @@ const Home = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {filteredTrees.map((tree) => (
-                <div
-                  key={tree.id}
-                  onClick={() => navigate(`/tree/${tree.id}`)}
-                  className="h-full cursor-pointer"
-                >
-                  <TreeCard tree={tree} />
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {paginatedTrees.map((tree) => (
+                  <div
+                    key={tree.id}
+                    onClick={() => navigate(`/tree/${tree.id}`)}
+                    className="h-full cursor-pointer"
+                  >
+                    <TreeCard tree={tree} />
+                  </div>
+                ))}
+              </div>
+              {totalPages > 1 && (
+                <div className="mt-6 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-gray-700">
+                    Showing {paginationRange.start}–{paginationRange.end} of {filteredTrees.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={currentPage === 1}
+                      className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-gray-700">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setCurrentPage((page) => Math.min(totalPages, page + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                      className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </section>
       </main>

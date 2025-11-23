@@ -374,7 +374,7 @@ const TreeDetail = () => {
   useEffect(() => {
     if (!treeFromCollection && !treesLoading && !hasAttemptedRefreshRef.current) {
       hasAttemptedRefreshRef.current = true;
-      refreshTrees().catch(() => {
+      refreshTrees({ force: true }).catch(() => {
         // allow a subsequent attempt if needed
         hasAttemptedRefreshRef.current = false;
       });
@@ -2116,7 +2116,7 @@ const TreeDetail = () => {
               Back to home
             </button>
             <button
-              onClick={() => refreshTrees()}
+              onClick={() => refreshTrees({ force: true })}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700"
             >
               <RefreshCw className="h-4 w-4" />

@@ -5,6 +5,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { DEFAULT_STAGE_VALUE } from "../utils/developmentStages";
@@ -14,6 +15,7 @@ import { roundToTenth } from "../utils/numberFormatting";
 const TreesContext = createContext(null);
 
 const MEDIA_URL_CACHE = { base: undefined, source: undefined };
+const TREES_CACHE_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 const resolveMediaUrl = (input) => {
   if (!input) {
@@ -190,7 +192,14 @@ export const TreesProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const partitionCollections = (items) => {
+  const cacheRef = useRef({
+    trees: null,
+    graveyard: null,
+    fetchedAt: 0,
+    promise: null,
+  });
+
+  const partitionCollections = useCallback((items) => {
     const activeTrees = [];
     const graveyardEntries = [];
 
@@ -210,7 +219,7 @@ export const TreesProvider = ({ children }) => {
     });
 
     return { activeTrees, graveyardEntries };
-  };
+  }, []);
 
   const placeTreeInCollections = useCallback((tree) => {
     setTrees((prevTrees) => {
@@ -268,25 +277,74 @@ export const TreesProvider = ({ children }) => {
     return updatedTree;
   }, []);
 
-  const refreshTrees = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get("/bonsai/");
-      const mapped = response.map(mapBonsai);
-      const { activeTrees, graveyardEntries } = partitionCollections(mapped);
-      setTrees(activeTrees);
-      setGraveyard(graveyardEntries);
-      setError("");
-    } catch (refreshError) {
-      setError(refreshError.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const refreshTrees = useCallback(
+    async ({ force = false } = {}) => {
+      const now = Date.now();
+      const cached = cacheRef.current;
+
+      const hasFreshCache =
+        !force &&
+        Array.isArray(cached.trees) &&
+        now - cached.fetchedAt < TREES_CACHE_STALE_TIME;
+
+      if (cached.promise && !force) {
+        setLoading(true);
+        return cached.promise;
+      }
+
+      if (hasFreshCache) {
+        setTrees(cached.trees ?? []);
+        setGraveyard(cached.graveyard ?? []);
+        setLoading(false);
+        setError("");
+        return cached.trees;
+      }
+
+      const fetchPromise = (async () => {
+        try {
+          setLoading(true);
+          const response = await apiClient.get("/bonsai/");
+          const mapped = response.map(mapBonsai);
+          const { activeTrees, graveyardEntries } =
+            partitionCollections(mapped);
+
+          cacheRef.current = {
+            trees: activeTrees,
+            graveyard: graveyardEntries,
+            fetchedAt: Date.now(),
+            promise: null,
+          };
+          setTrees(activeTrees);
+          setGraveyard(graveyardEntries);
+          setError("");
+          return activeTrees;
+        } catch (refreshError) {
+          setError(refreshError.message);
+          throw refreshError;
+        } finally {
+          setLoading(false);
+          cacheRef.current.promise = null;
+        }
+      })();
+
+      cacheRef.current.promise = fetchPromise;
+      return fetchPromise;
+    },
+    [partitionCollections]
+  );
 
   useEffect(() => {
     refreshTrees();
   }, [refreshTrees]);
+
+  useEffect(() => {
+    cacheRef.current = {
+      ...cacheRef.current,
+      trees,
+      graveyard,
+      fetchedAt: Date.now(),
+    };
+  }, [trees, graveyard]);
 
   const addTree = useCallback(
     async (treeData) => {
