@@ -72,6 +72,53 @@ servers after ensuring dependencies are installed.
 
 ---
 
+## Zero-setup Windows executable
+
+You can ship a single `BonsaiTracker.exe` that bundles the FastAPI backend,
+SQLite database file, static media folders, and the production React build. The
+executable opens the app at `http://127.0.0.1:8000/` without requiring Node or
+Python on the user's machine.
+
+**One-time packaging steps on Windows:**
+
+1. Install Python 3.11+ and Node.js on the build machine.
+2. From the repository root, install the packaging dependencies:
+   ```powershell
+   python -m venv backend/.venv
+   backend/.venv/Scripts/Activate.ps1
+   pip install -r backend/requirements-packaging.txt
+   ```
+3. Build the bundled executable:
+   ```powershell
+   python scripts/build_windows_exe.py
+   ```
+   The script runs `npm install`/`npm run build`, copies the Vite output into
+   `backend/app/frontend_dist`, and invokes PyInstaller against
+   `backend/app/serve.py`.
+4. Grab `backend/dist/BonsaiTracker.exe` and ship it (for example, attach it to
+   a GitHub release). The executable creates and updates `bonsai.db` and
+   `var/media` alongside itself so user data persists between launches.
+
+**Running the packaged app:** double-click `BonsaiTracker.exe` or run it from a
+terminal. A browser tab will open to `http://127.0.0.1:8000/` automatically; if
+you close the tab, reopen the same URL while the exe is running. To stop the
+server, close the terminal window or press **Ctrl+C**.
+
+### What changes for development?
+
+- Your day-to-day workflow (branching, coding, testing with `start_project.sh`,
+  merging) stays the same.
+- When you want to hand testers a no-setup build, run
+  `python scripts/build_windows_exe.py` on Windows, grab the generated
+  `backend/dist/BonsaiTracker.exe`, and upload it to your release or share it
+  directly.
+- Any frontend changes must be compiled (`npm run build`) before packaging so
+  the latest UI is baked into the exe. The helper script handles that for you.
+- Data created by the exe lives next to it (a new `bonsai.db` plus `var/media`),
+  so you can copy the whole folder to back up or inspect user reports.
+
+---
+
 ## Prerequisites
 
 Make sure the following tools are installed:
