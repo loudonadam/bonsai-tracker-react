@@ -18,6 +18,7 @@ import AddReminderModal from "../components/AddReminderModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {
   appendReminderToStorage,
+  hasStoredReminders,
   loadStoredReminders,
   removeReminderFromStorage,
   saveStoredReminders,
@@ -169,9 +170,10 @@ const Home = () => {
 
   const [reminders, setReminders] = useState(() => {
     const stored = loadStoredReminders();
-    if (stored.length > 0) {
+    if (hasStoredReminders()) {
       return stored;
     }
+
     saveStoredReminders(DEFAULT_REMINDERS);
     return DEFAULT_REMINDERS;
   });

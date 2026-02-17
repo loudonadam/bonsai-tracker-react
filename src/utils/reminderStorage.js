@@ -15,6 +15,11 @@ export const loadStoredReminders = () => {
   }
 };
 
+export const hasStoredReminders = () => {
+  if (!isBrowser()) return false;
+  return window.localStorage.getItem(STORAGE_KEY) !== null;
+};
+
 export const saveStoredReminders = (reminders) => {
   if (!isBrowser()) return;
   try {
