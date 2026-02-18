@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .database import Base, engine
@@ -39,6 +42,20 @@ app.include_router(backup.router)
 app.include_router(accolades.router)
 
 app.mount(settings.media_url, StaticFiles(directory=settings.media_root), name="media")
+
+frontend_dir = Path(settings.frontend_dist)
+if frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        if full_path.startswith(settings.api_prefix.lstrip("/")):
+            raise HTTPException(status_code=404)
+
+        index_file = frontend_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404)
 
 
 @app.get("/")
