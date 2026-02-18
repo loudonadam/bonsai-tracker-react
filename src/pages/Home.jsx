@@ -17,8 +17,9 @@ import AddTreeModal from "../components/AddTreeModal";
 import AddReminderModal from "../components/AddReminderModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {
-  appendReminderToStorage,
-  hasStoredReminders,
+  createReminder,
+  deleteReminder,
+  fetchReminders,
   loadStoredReminders,
   removeReminderFromStorage,
   saveStoredReminders,
@@ -54,16 +55,6 @@ const getStoredCollectionName = () => {
   }
   return localStorage.getItem("collectionName") || DEFAULT_COLLECTION_NAME;
 };
-
-const DEFAULT_REMINDERS = [
-  {
-    id: 1,
-    treeId: 1,
-    treeName: "Autumn Flame",
-    message: "Repot in early spring",
-    dueDate: "2025-03-15",
-  },
-];
 
 const formatReminderDueDate = (dateString, todayStart) => {
   if (!dateString) {
@@ -168,15 +159,7 @@ const Home = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const [reminders, setReminders] = useState(() => {
-    const stored = loadStoredReminders();
-    if (hasStoredReminders()) {
-      return stored;
-    }
-
-    saveStoredReminders(DEFAULT_REMINDERS);
-    return DEFAULT_REMINDERS;
-  });
+  const [reminders, setReminders] = useState(() => loadStoredReminders());
   const [completeReminderConfirm, setCompleteReminderConfirm] = useState({
     open: false,
     reminder: null,
@@ -264,15 +247,45 @@ const Home = () => {
     [trees]
   );
 
-  // ─── Reminder Helpers ───────────────────────────────────────────
-  const addReminder = (reminder) => {
-    const newReminder = {
-      ...reminder,
-      id: reminder.id ?? Date.now(),
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReminders = async () => {
+      try {
+        const synced = await fetchReminders();
+        if (!cancelled) {
+          setReminders(synced);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Unable to sync reminders from API, using local storage.", error);
+          setReminders(loadStoredReminders());
+        }
+      }
     };
-    const updated = appendReminderToStorage(newReminder);
-    setReminders(updated);
-    setShowAddReminder(false);
+
+    loadReminders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ─── Reminder Helpers ───────────────────────────────────────────
+  const addReminder = async (reminder) => {
+    setReminderActionError("");
+    try {
+      const createdReminder = await createReminder(reminder);
+      setReminders((existing) => {
+        const updated = [...existing, createdReminder];
+        saveStoredReminders(updated);
+        return updated;
+      });
+      setShowAddReminder(false);
+    } catch (error) {
+      setReminderActionError(error.message || "Unable to save this reminder right now.");
+    }
   };
 
   const requestCompleteReminder = (reminder) => {
@@ -289,7 +302,7 @@ const Home = () => {
     setReminderActionError("");
   };
 
-  const handleConfirmCompleteReminder = () => {
+  const handleConfirmCompleteReminder = async () => {
     const reminderId = completeReminderConfirm.reminder?.id;
     if (!reminderId) {
       return;
@@ -299,6 +312,7 @@ const Home = () => {
     setReminderActionError("");
 
     try {
+      await deleteReminder(reminderId);
       const updated = removeReminderFromStorage(reminderId);
       setReminders(updated);
       setCompleteReminderConfirm({ open: false, reminder: null });

@@ -22,8 +22,9 @@ import {
   RotateCw,
 } from "lucide-react";
 import {
-  appendReminderToStorage,
+  createReminder,
   loadStoredReminders,
+  saveStoredReminders,
 } from "../utils/reminderStorage";
 import {
   DEVELOPMENT_STAGE_OPTIONS,
@@ -1618,14 +1619,17 @@ const TreeDetail = () => {
 
         if (newUpdate.addReminder) {
           const reminder = {
-            id: Date.now(),
             treeId: tree.id,
             treeName: tree.name,
             message: trimmedReminderMessage,
             dueDate: newUpdate.reminderDueDate,
           };
-          const updatedReminders = appendReminderToStorage(reminder);
-          setReminders(updatedReminders);
+          const createdReminder = await createReminder(reminder);
+          setReminders((existing) => {
+            const updatedReminders = [...existing, createdReminder];
+            saveStoredReminders(updatedReminders);
+            return updatedReminders;
+          });
         }
       }
 
