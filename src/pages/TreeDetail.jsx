@@ -148,7 +148,7 @@ const TreeDetail = () => {
   const [tree, setTree] = useState(treeFromCollection ?? mockTreeData);
   const [detailLoading, setDetailLoading] = useState(!treeFromCollection);
   const [detailError, setDetailError] = useState("");
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('updates');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
   const [accolades, setAccolades] = useState(
