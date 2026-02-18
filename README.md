@@ -130,13 +130,33 @@ The instructions assume a POSIX shell (macOS/Linux/WSL). Windows PowerShell comm
 
 ### Backend tips
 
-- The SQLite database file lives at `backend/bonsai.db`. Because everything is local, your data persists across restarts unless you delete the file.
-- Uploaded images are written to `backend/var/media/full/` and `backend/var/media/thumbs/`. The API responses include the fully qualified URL for each version so the UI can load thumbnails quickly and fetch originals on demand.
+- The default SQLite database is `~/.bonsai-tracker/bonsai.db` (legacy path `backend/bonsai.db` is auto-copied the first time when present).
+- Uploaded images are written to `~/.bonsai-tracker/media/full/` and `~/.bonsai-tracker/media/thumbs/` (with one-time migration from `backend/var/media`).
 - All CRUD routes are grouped under the `/api` prefix:
   - `/api/bonsai` for bonsai trees, photos, measurements, and updates
   - `/api/species` for your species library
   - `/api/notifications` for reminders and alerts
 - Every POST/PUT/PATCH call returns the latest state from the database, making it easy to keep the UI in sync.
+
+#### Recovering missing photo files
+
+If the app shows photo entries but the files are missing on disk, run:
+
+```bash
+# Dry-run: reports what can be recovered
+python scripts/recover_photo_files.py
+
+# Actually copy recoverable files into the active media root
+python scripts/recover_photo_files.py --apply
+
+# Add extra search locations (repeat --source as needed)
+python scripts/recover_photo_files.py --apply \
+  --source /path/to/old/drive \
+  --source /path/to/unzipped/backup
+```
+
+The script compares `photos.full_path` / `photos.thumbnail_path` rows in SQLite against your active media root, then tries to restore missing files by filename from old media folders/backups.
+
 
 ### Importing data from the legacy app
 

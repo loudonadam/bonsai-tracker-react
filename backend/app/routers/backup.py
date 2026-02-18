@@ -282,6 +282,50 @@ def _copy_tree_photos(source_dir: Path, target_media_root: Path) -> None:
         shutil.copy2(file_path, destination)
 
 
+def _validate_tree_photo_media(tmp_dir: Path, metadata_version: str) -> None:
+    """Fail imports that reference photo files missing from the backup archive."""
+
+    if not _is_version_at_least(metadata_version, 2, 1):
+        return
+
+    trees_root = tmp_dir / "data" / "trees"
+    if not trees_root.exists():
+        return
+
+    missing_files: list[str] = []
+
+    for tree_dir in trees_root.iterdir():
+        if not tree_dir.is_dir():
+            continue
+
+        photos_csv = tree_dir / "photos.csv"
+        if not photos_csv.exists():
+            continue
+
+        for row in _load_csv_file(photos_csv):
+            for path_value, prefix in (
+                (row.get("full_path"), "full"),
+                (row.get("thumbnail_path"), "thumbs"),
+            ):
+                subpath = _normalize_photo_subpath(path_value, prefix)
+                if subpath is None:
+                    continue
+
+                expected = tree_dir / "photos" / prefix / subpath
+                if not expected.exists() or not expected.is_file():
+                    missing_files.append(expected.as_posix())
+
+    if missing_files:
+        sample = ", ".join(missing_files[:10])
+        remainder = len(missing_files) - 10
+        detail = f"Backup is missing {len(missing_files)} photo file(s)."
+        if sample:
+            detail = f"{detail} Missing examples: {sample}"
+        if remainder > 0:
+            detail = f"{detail} (and {remainder} more)"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
 def _import_rows(
     db: Session,
     species_rows: list[dict[str, str]],
@@ -1229,6 +1273,8 @@ async def import_backup(
                         notification_rows,
                         graveyard_rows,
                     ) = _collect_rows_v1(data_dir)
+
+                _validate_tree_photo_media(tmp_dir, metadata_version)
 
                 _import_rows(
                     db,
