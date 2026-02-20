@@ -157,6 +157,10 @@ python scripts/recover_photo_files.py --apply \
 
 The script compares `photos.full_path` / `photos.thumbnail_path` rows in SQLite against your active media root, then tries to restore missing files by filename from old media folders/backups.
 
+You can also point `--source` at a backup `.zip`; the script will unpack it temporarily and include it in the search.
+
+If output shows `Recovered files copied: 0` with many unresolved files, that means the missing filenames were **not found** in any scanned source. In that case, add more `--source` paths (external drives, cloud-sync history exports, older backup zips) and re-run.
+
 
 ### Importing data from the legacy app
 

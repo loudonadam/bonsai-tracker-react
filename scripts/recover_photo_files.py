@@ -30,6 +30,8 @@ import argparse
 import os
 import shutil
 import sqlite3
+import tempfile
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -101,6 +103,14 @@ def _build_source_index(source_roots: list[Path]) -> dict[str, list[Path]]:
     return index
 
 
+def _materialize_zip_source(zip_path: Path, workdir: Path) -> Path:
+    target = workdir / f"zip_{zip_path.stem}"
+    target.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as archive:
+        archive.extractall(target)
+    return target
+
+
 def _pick_best_match(matches: list[Path], expected_suffix: str) -> Path | None:
     if not matches:
         return None
@@ -125,7 +135,10 @@ def main() -> int:
         type=Path,
         action="append",
         default=[],
-        help="Additional source directory to scan for missing files (repeatable)",
+        help=(
+            "Additional source location to scan (repeatable). "
+            "Can be a directory or a .zip backup archive."
+        ),
     )
     parser.add_argument(
         "--apply",
@@ -145,63 +158,84 @@ def main() -> int:
         print(f"WARNING: Media root does not exist yet: {media_root}")
 
     sources = _default_sources(media_root)
-    for source in args.source:
-        if source not in sources:
-            sources.append(source)
 
-    print(f"Database:   {db_path}")
-    print(f"Media root: {media_root}")
-    print("Sources:")
-    for source in sources:
-        exists_marker = "✓" if source.exists() else "✗"
-        print(f"  [{exists_marker}] {source}")
+    tmp_root = Path(tempfile.mkdtemp(prefix="bonsai-recover-"))
+    prepared_sources: list[Path] = []
+    try:
+        for source in args.source:
+            if source.suffix.lower() == ".zip" and source.exists():
+                extracted = _materialize_zip_source(source, tmp_root)
+                prepared_sources.append(extracted)
+            else:
+                prepared_sources.append(source)
 
-    print("\nIndexing source files (this may take a bit)...")
-    source_index = _build_source_index(sources)
-    print(f"Indexed {sum(len(v) for v in source_index.values())} file entries")
+        for source in prepared_sources:
+            if source not in sources:
+                sources.append(source)
 
-    conn = sqlite3.connect(str(db_path))
-    rows = list(_iter_photo_rows(conn))
-    conn.close()
+        print(f"Database:   {db_path}")
+        print(f"Media root: {media_root}")
+        print("Sources:")
+        for source in sources:
+            exists_marker = "✓" if source.exists() else "✗"
+            print(f"  [{exists_marker}] {source}")
 
-    missing_targets: list[tuple[int, str, Path]] = []
-    for photo_id, full_path, thumb_path in rows:
-        full_target = _resolve_target_path(media_root, full_path)
-        thumb_target = _resolve_target_path(media_root, thumb_path)
+        print("\nIndexing source files (this may take a bit)...")
+        source_index = _build_source_index(sources)
+        print(f"Indexed {sum(len(v) for v in source_index.values())} file entries")
 
-        if not full_target.exists():
-            missing_targets.append((photo_id, "full", full_target))
-        if not thumb_target.exists():
-            missing_targets.append((photo_id, "thumbs", thumb_target))
+        conn = sqlite3.connect(str(db_path))
+        rows = list(_iter_photo_rows(conn))
+        conn.close()
 
-    print(f"\nPhotos in DB: {len(rows)}")
-    print(f"Missing files: {len(missing_targets)}")
+        missing_targets: list[tuple[int, str, Path]] = []
+        for photo_id, full_path, thumb_path in rows:
+            full_target = _resolve_target_path(media_root, full_path)
+            thumb_target = _resolve_target_path(media_root, thumb_path)
 
-    recovered = 0
-    unresolved = 0
+            if not full_target.exists():
+                missing_targets.append((photo_id, "full", full_target))
+            if not thumb_target.exists():
+                missing_targets.append((photo_id, "thumbs", thumb_target))
 
-    for photo_id, expected_suffix, target in missing_targets:
-        matches = source_index.get(target.name, [])
-        source_file = _pick_best_match(matches, expected_suffix)
+        print(f"\nPhotos in DB: {len(rows)}")
+        print(f"Missing files: {len(missing_targets)}")
 
-        if source_file is None:
-            unresolved += 1
-            continue
+        recovered = 0
+        unresolved = 0
 
-        print(f"{photo_id:>5} [{expected_suffix}] {target} <- {source_file}")
-        if args.apply:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.resolve() != source_file.resolve():
-                shutil.copy2(source_file, target)
-            recovered += 1
+        for photo_id, expected_suffix, target in missing_targets:
+            matches = source_index.get(target.name, [])
+            source_file = _pick_best_match(matches, expected_suffix)
 
-    if not args.apply:
-        print("\nDry run only. Re-run with --apply to copy recoverable files.")
-    else:
-        print(f"\nRecovered files copied: {recovered}")
+            if source_file is None:
+                unresolved += 1
+                continue
 
-    print(f"Still unresolved: {unresolved}")
-    return 0
+            print(f"{photo_id:>5} [{expected_suffix}] {target} <- {source_file}")
+            if args.apply:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.resolve() != source_file.resolve():
+                    shutil.copy2(source_file, target)
+                recovered += 1
+
+        if not args.apply:
+            print("\nDry run only. Re-run with --apply to copy recoverable files.")
+        else:
+            print(f"\nRecovered files copied: {recovered}")
+
+        if unresolved and recovered == 0:
+            print("\nNo missing files could be matched by filename in the scanned sources.")
+            print("Likely meaning: the photo files are not present in those folders/archives.")
+            print("Next steps:")
+            print("  1) Add any other backup folders/drives/cloud export paths via --source")
+            print("  2) Point --source at a full backup .zip archive (supported)")
+            print("  3) Verify you are targeting the correct DB/media root with --db and --media-root")
+
+        print(f"Still unresolved: {unresolved}")
+        return 0
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 if __name__ == "__main__":
