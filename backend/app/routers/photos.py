@@ -81,6 +81,15 @@ def _rotate_photo_files(photo: models.Photo, degrees: int) -> None:
         ) from exc
 
 
+def _delete_media_files(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            if path.exists() and path.is_file():
+                path.unlink()
+        except OSError:  # pragma: no cover - best effort cleanup
+            continue
+
+
 @router.post("/{bonsai_id}/photos", response_model=schemas.PhotoOut, status_code=status.HTTP_201_CREATED)
 async def upload_photo(
     bonsai_id: int,
@@ -172,12 +181,70 @@ def delete_photo(bonsai_id: int, photo_id: int, db: Session = Depends(get_db)):
     db.delete(photo)
     db.commit()
 
-    for path in media_paths:
-        try:
-            if path.exists() and path.is_file():
-                path.unlink()
-        except OSError:  # pragma: no cover - best effort cleanup
-            continue
+    _delete_media_files(media_paths)
+
+
+@router.post("/{bonsai_id}/photos/{photo_id}/replace", response_model=schemas.PhotoOut)
+async def replace_photo_file(
+    bonsai_id: int,
+    photo_id: int,
+    file: UploadFile = File(...),
+    description: str | None = Form(default=None),
+    taken_at: str | None = Form(default=None),
+    is_primary: bool | None = Form(default=None),
+    update_id: int | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    photo = db.get(models.Photo, photo_id)
+    if not photo or photo.bonsai_id != bonsai_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    old_media_paths: list[Path] = []
+    for stored_path in (photo.full_path, photo.thumbnail_path):
+        resolved = _resolve_media_path(stored_path)
+        if resolved:
+            old_media_paths.append(resolved)
+
+    contents = await file.read()
+    full_path, thumb_path = save_image_bytes(contents, file.filename, file.content_type)
+
+    taken_at_dt = photo.taken_at
+    if taken_at is not None:
+        if taken_at == "":
+            taken_at_dt = None
+        else:
+            try:
+                taken_at_dt = datetime.fromisoformat(taken_at)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid taken_at format",
+                ) from exc
+
+    photo.full_path = full_path
+    photo.thumbnail_path = thumb_path
+    photo.taken_at = taken_at_dt
+
+    if description is not None:
+        photo.description = description
+
+    if update_id is not None:
+        photo.update_id = update_id
+
+    if is_primary is True:
+        for existing in photo.bonsai.photos:
+            existing.is_primary = existing.id == photo.id
+            db.add(existing)
+    elif is_primary is False:
+        photo.is_primary = False
+
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+
+    _delete_media_files(old_media_paths)
+
+    return schemas.PhotoOut.from_model(photo)
 
 
 @router.patch("/{bonsai_id}/photos/{photo_id}", response_model=schemas.PhotoOut)

@@ -109,10 +109,10 @@ const initialAccoladeState = {
 };
 
 const initialPhotoUploadState = {
-  file: null,
-  preview: null,
+  files: [],
+  previews: [],
   description: "",
-  takenAt: "",
+  takenAtByFileName: {},
   isPrimary: false,
 };
 
@@ -133,6 +133,7 @@ const TreeDetail = () => {
     uploadTreePhoto,
     updateTree,
     updateTreePhoto,
+    replaceTreePhotoFile,
     deleteTreePhoto,
     createTreeUpdate,
     updateTreeUpdate,
@@ -218,6 +219,8 @@ const TreeDetail = () => {
     takenAt: "",
     description: "",
     rotationDegrees: 0,
+    replacementFile: null,
+    replacementPreview: null,
   });
   const [photoEditError, setPhotoEditError] = useState("");
   const [isSavingPhotoEdit, setIsSavingPhotoEdit] = useState(false);
@@ -923,8 +926,19 @@ const TreeDetail = () => {
   };
 
   const resetPhotoEditState = () => {
+    setPhotoEditData((prev) => {
+      if (prev.replacementPreview) {
+        URL.revokeObjectURL(prev.replacementPreview);
+      }
+      return {
+        takenAt: "",
+        description: "",
+        rotationDegrees: 0,
+        replacementFile: null,
+        replacementPreview: null,
+      };
+    });
     setPhotoBeingEdited(null);
-    setPhotoEditData({ takenAt: "", description: "", rotationDegrees: 0 });
     setPhotoEditError("");
     setIsSavingPhotoEdit(false);
   };
@@ -940,6 +954,8 @@ const TreeDetail = () => {
       takenAt: formatInputDate(photo.takenAt ?? photo.date ?? ""),
       description: photo.description ?? "",
       rotationDegrees: 0,
+      replacementFile: null,
+      replacementPreview: null,
     });
     setPhotoActionError("");
     setShowEditPhotoModal(true);
@@ -964,6 +980,53 @@ const TreeDetail = () => {
     }));
   };
 
+  const handlePhotoReplacementChange = async (event) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+      setPhotoEditData((prev) => {
+        if (prev.replacementPreview) {
+          URL.revokeObjectURL(prev.replacementPreview);
+        }
+        return {
+          ...prev,
+          replacementFile: null,
+          replacementPreview: null,
+        };
+      });
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setPhotoEditData((prev) => {
+      if (prev.replacementPreview) {
+        URL.revokeObjectURL(prev.replacementPreview);
+      }
+      return {
+        ...prev,
+        replacementFile: file,
+        replacementPreview: preview,
+      };
+    });
+
+    try {
+      const extracted = await extractPhotoDate(file);
+      if (extracted) {
+        setPhotoEditData((prev) => {
+          if (prev.replacementFile !== file || prev.takenAt) {
+            return prev;
+          }
+          return {
+            ...prev,
+            takenAt: extracted,
+          };
+        });
+      }
+    } catch (metadataError) {
+      console.warn("Failed to extract replacement photo metadata", metadataError);
+    }
+  };
+
   const handleSavePhotoEdit = async () => {
     if (!tree?.id || !photoBeingEdited?.id) {
       return;
@@ -973,24 +1036,37 @@ const TreeDetail = () => {
     setPhotoEditError("");
 
     try {
-      const payload = {
-        description: photoEditData.description?.trim() ?? "",
+      const trimmedDescription = photoEditData.description?.trim() ?? "";
+      const updatePayload = {
+        description: trimmedDescription,
       };
+
       if (photoEditData.takenAt) {
-        payload.taken_at = photoEditData.takenAt;
+        updatePayload.taken_at = photoEditData.takenAt;
       } else {
-        payload.taken_at = null;
+        updatePayload.taken_at = null;
       }
 
-      if (photoEditData.rotationDegrees % 360 !== 0) {
-        payload.rotate_degrees = photoEditData.rotationDegrees;
-      }
+      let updatedPhoto;
+      if (photoEditData.replacementFile) {
+        updatedPhoto = await replaceTreePhotoFile(tree.id, photoBeingEdited.id, {
+          file: photoEditData.replacementFile,
+          description: trimmedDescription,
+          takenAt: photoEditData.takenAt || "",
+          isPrimary: photoBeingEdited.isPrimary,
+          updateId: photoBeingEdited.updateId ?? null,
+        });
+      } else {
+        if (photoEditData.rotationDegrees % 360 !== 0) {
+          updatePayload.rotate_degrees = photoEditData.rotationDegrees;
+        }
 
-      const updatedPhoto = await updateTreePhoto(
-        tree.id,
-        photoBeingEdited.id,
-        payload
-      );
+        updatedPhoto = await updateTreePhoto(
+          tree.id,
+          photoBeingEdited.id,
+          updatePayload
+        );
+      }
 
       setTree((prev) => {
         if (!prev) {
@@ -1033,7 +1109,7 @@ const TreeDetail = () => {
       resetPhotoEditState();
       setShowEditPhotoModal(false);
     } catch (photoError) {
-      console.error("Failed to update photo metadata", photoError);
+      console.error("Failed to update photo", photoError);
       setPhotoEditError(photoError.message ?? "Unable to update photo details.");
     } finally {
       setIsSavingPhotoEdit(false);
@@ -1385,9 +1461,11 @@ const TreeDetail = () => {
 
   const resetPhotoForm = useCallback(() => {
     setNewPhoto((prev) => {
-      if (prev.preview) {
-        URL.revokeObjectURL(prev.preview);
-      }
+      prev.previews.forEach((preview) => {
+        if (preview?.url) {
+          URL.revokeObjectURL(preview.url);
+        }
+      });
       return { ...initialPhotoUploadState };
     });
     if (photoUploadInputRef.current) {
@@ -1407,62 +1485,72 @@ const TreeDetail = () => {
     resetPhotoForm();
   }, [resetPhotoForm]);
 
-  const applySelectedPhoto = useCallback(async (file) => {
-    if (!file) {
+  const applySelectedPhotos = useCallback(async (files) => {
+    if (!files || files.length === 0) {
       setNewPhoto((prev) => {
-        if (prev.preview) {
-          URL.revokeObjectURL(prev.preview);
-        }
+        prev.previews.forEach((preview) => {
+          if (preview?.url) {
+            URL.revokeObjectURL(preview.url);
+          }
+        });
         return {
           ...prev,
-          file: null,
-          preview: null,
-          takenAt: "",
+          files: [],
+          previews: [],
+          takenAtByFileName: {},
         };
       });
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
+    const nextPreviews = files.map((file) => ({
+      key: `${file.name}-${file.lastModified}-${file.size}`,
+      name: file.name,
+      url: URL.createObjectURL(file),
+    }));
+
     setNewPhoto((prev) => {
-      if (prev.preview) {
-        URL.revokeObjectURL(prev.preview);
-      }
+      prev.previews.forEach((preview) => {
+        if (preview?.url) {
+          URL.revokeObjectURL(preview.url);
+        }
+      });
       return {
         ...prev,
-        file,
-        preview: objectUrl,
-        takenAt: "",
+        files,
+        previews: nextPreviews,
+        takenAtByFileName: {},
       };
     });
 
-    try {
-      const extracted = await extractPhotoDate(file);
-      if (extracted) {
-        setNewPhoto((prev) => {
-          if (prev.file !== file || prev.takenAt) {
-            return prev;
-          }
-          return {
-            ...prev,
-            takenAt: extracted,
-          };
-        });
-      }
-    } catch (metadataError) {
-      console.warn("Failed to extract photo metadata", metadataError);
-    }
+    const extractedEntries = await Promise.all(
+      files.map(async (file) => {
+        try {
+          const extracted = await extractPhotoDate(file);
+          return [file.name, extracted || ""];
+        } catch (metadataError) {
+          console.warn("Failed to extract photo metadata", metadataError);
+          return [file.name, ""];
+        }
+      })
+    );
+
+    const metadataMap = Object.fromEntries(extractedEntries);
+    setNewPhoto((prev) => ({
+      ...prev,
+      takenAtByFileName: metadataMap,
+    }));
   }, []);
 
   const handlePhotoInputChange = async (event) => {
-    const file = event.target.files?.[0];
-    await applySelectedPhoto(file || null);
+    const files = Array.from(event.target.files ?? []);
+    await applySelectedPhotos(files);
   };
 
   const handlePhotoDrop = async (event) => {
     event.preventDefault();
-    const file = event.dataTransfer.files?.[0];
-    await applySelectedPhoto(file || null);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    await applySelectedPhotos(files);
   };
 
   const handlePhotoDragOver = (event) => {
@@ -1470,8 +1558,8 @@ const TreeDetail = () => {
   };
 
   const handleUploadNewPhoto = async () => {
-    if (!newPhoto.file) {
-      setAddPhotoError("Please choose a photo to upload.");
+    if (!newPhoto.files.length) {
+      setAddPhotoError("Please choose at least one photo to upload.");
       return;
     }
 
@@ -1484,38 +1572,42 @@ const TreeDetail = () => {
     setAddPhotoError("");
 
     try {
-      const payload = {
-        file: newPhoto.file,
-      };
       const trimmedDescription = newPhoto.description.trim();
-      if (trimmedDescription) {
-        payload.description = trimmedDescription;
-      }
-      if (newPhoto.takenAt) {
-        payload.takenAt = newPhoto.takenAt;
-      }
-      if (newPhoto.isPrimary) {
-        payload.isPrimary = true;
-      }
+      const uploadedPhotos = await Promise.all(
+        newPhoto.files.map((file, index) => {
+          const payload = { file };
+          if (trimmedDescription) {
+            payload.description = trimmedDescription;
+          }
+          const extractedTakenAt = newPhoto.takenAtByFileName[file.name];
+          if (extractedTakenAt) {
+            payload.takenAt = extractedTakenAt;
+          }
+          if (newPhoto.isPrimary && index === 0) {
+            payload.isPrimary = true;
+          }
+          return uploadTreePhoto(tree.id, payload);
+        })
+      );
 
-      const uploaded = await uploadTreePhoto(tree.id, payload);
       setTree((prev) => {
         if (!prev) {
           return prev;
         }
-        const updatedPhotos = [uploaded, ...(prev.photos ?? [])];
+        const updatedPhotos = [...uploadedPhotos, ...(prev.photos ?? [])];
         const updatedTree = {
           ...prev,
           photos: updatedPhotos,
         };
-        if (uploaded.isPrimary) {
+        const newPrimary = uploadedPhotos.find((photo) => photo.isPrimary);
+        if (newPrimary) {
           updatedTree.photoUrl =
-            uploaded.thumbnailUrl ||
-            uploaded.url ||
-            uploaded.fullUrl ||
+            newPrimary.thumbnailUrl ||
+            newPrimary.url ||
+            newPrimary.fullUrl ||
             prev.photoUrl;
           updatedTree.fullPhotoUrl =
-            uploaded.fullUrl || prev.fullPhotoUrl || uploaded.url || null;
+            newPrimary.fullUrl || prev.fullPhotoUrl || newPrimary.url || null;
         }
         return updatedTree;
       });
@@ -1530,11 +1622,13 @@ const TreeDetail = () => {
 
   useEffect(() => {
     return () => {
-      if (newPhoto.preview) {
-        URL.revokeObjectURL(newPhoto.preview);
-      }
+      newPhoto.previews.forEach((preview) => {
+        if (preview?.url) {
+          URL.revokeObjectURL(preview.url);
+        }
+      });
     };
-  }, [newPhoto.preview]);
+  }, [newPhoto.previews]);
 
   const handleSaveUpdate = async () => {
     if (!tree?.id || isSavingUpdate) {
@@ -2783,7 +2877,7 @@ const TreeDetail = () => {
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-semibold text-gray-800">Upload Tree Photo</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Upload Tree Photos</h3>
 
             {addPhotoError && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -2797,12 +2891,22 @@ const TreeDetail = () => {
               onDrop={handlePhotoDrop}
               onDragOver={handlePhotoDragOver}
             >
-              {newPhoto.preview ? (
-                <img
-                  src={newPhoto.preview}
-                  alt="Selected tree"
-                  className="rounded-md border border-gray-200 w-full h-48 object-cover"
-                />
+              {newPhoto.previews.length > 0 ? (
+                <div className="w-full space-y-2">
+                  <p className="text-sm font-medium text-gray-700">
+                    {newPhoto.previews.length} photo{newPhoto.previews.length === 1 ? "" : "s"} selected
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {newPhoto.previews.slice(0, 6).map((preview) => (
+                      <img
+                        key={preview.key}
+                        src={preview.url}
+                        alt={preview.name}
+                        className="rounded-md border border-gray-200 w-full h-20 object-cover"
+                      />
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <>
                   <Camera className="h-10 w-10 mb-2 text-gray-400" />
@@ -2816,27 +2920,27 @@ const TreeDetail = () => {
               ref={photoUploadInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={handlePhotoInputChange}
             />
 
             <div className="space-y-3">
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Photo Date
-                <DatePicker
-                  value={newPhoto.takenAt}
-                  onChange={(event) =>
-                    setNewPhoto((prev) => ({
-                      ...prev,
-                      takenAt: event.target.value,
-                    }))
-                  }
-                  placeholder="Select photo date"
-                />
-                <span className="text-xs text-gray-500">
-                  Automatically extracted from the photo metadata. You can adjust it here.
-                </span>
-              </label>
+              <div className="space-y-1 text-sm text-gray-700">
+                <p className="font-medium">Photo Dates</p>
+                <p className="text-xs text-gray-500">
+                  Dates are extracted per photo from metadata.
+                </p>
+                {newPhoto.files.length > 0 && (
+                  <div className="max-h-36 overflow-auto rounded-lg border border-gray-200 p-2 text-xs text-gray-600 space-y-1">
+                    {newPhoto.files.map((file) => (
+                      <p key={`${file.name}-${file.lastModified}`}>
+                        {file.name}: {newPhoto.takenAtByFileName[file.name] || "No date found"}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Description
@@ -2884,7 +2988,7 @@ const TreeDetail = () => {
                 disabled={isUploadingPhoto}
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed transition"
               >
-                {isUploadingPhoto ? "Uploading..." : "Upload Photo"}
+                {isUploadingPhoto ? "Uploading..." : "Upload Photos"}
               </button>
             </div>
       </div>
@@ -2944,6 +3048,29 @@ const TreeDetail = () => {
             )}
 
             <div className="space-y-3">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Replace Photo File
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoReplacementChange}
+                  className="border border-gray-300 rounded-lg px-3 py-2 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-2 file:py-1"
+                />
+                <span className="text-xs text-gray-500">
+                  Replaces the image while preserving its existing associations.
+                </span>
+              </label>
+
+              {photoEditData.replacementPreview && (
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <img
+                    src={photoEditData.replacementPreview}
+                    alt="Replacement preview"
+                    className="h-40 w-full object-cover"
+                  />
+                </div>
+              )}
+
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Photo Date
                 <DatePicker

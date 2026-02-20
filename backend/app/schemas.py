@@ -114,6 +114,7 @@ class PhotoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    update_id: Optional[int] = None
     description: Optional[str] = None
     taken_at: Optional[datetime] = None
     full_url: str
@@ -126,6 +127,7 @@ class PhotoOut(BaseModel):
         base_url = settings.media_url.rstrip("/")
         return cls(
             id=photo.id,
+            update_id=photo.update_id,
             description=photo.description,
             taken_at=photo.taken_at,
             full_url=f"{base_url}/{photo.full_path}" if photo.full_path else "",

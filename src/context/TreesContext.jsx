@@ -70,6 +70,7 @@ const mapPhoto = (photo) => {
 
   return {
     id: photo.id,
+    updateId: photo.update_id ?? photo.updateId ?? null,
     url: resolvedThumbnail || resolvedFull,
     thumbnailUrl: resolvedThumbnail,
     fullUrl: resolvedFull,
@@ -821,6 +822,78 @@ export const TreesProvider = ({ children }) => {
     [updateTreeReferences]
   );
 
+  const replaceTreePhotoFile = useCallback(
+    async (treeId, photoId, data) => {
+      if (!data?.file) {
+        throw new Error("A replacement photo file is required.");
+      }
+
+      if (typeof File !== "undefined" && !(data.file instanceof File)) {
+        throw new Error("The provided replacement must be a valid file object.");
+      }
+
+      const formData = new FormData();
+      formData.append("file", data.file);
+
+      if (Object.prototype.hasOwnProperty.call(data, "description")) {
+        formData.append("description", data.description ?? "");
+      }
+      if (Object.prototype.hasOwnProperty.call(data, "takenAt")) {
+        formData.append("taken_at", data.takenAt ?? "");
+      }
+      if (Object.prototype.hasOwnProperty.call(data, "isPrimary")) {
+        formData.append("is_primary", data.isPrimary ? "true" : "false");
+      }
+      if (Object.prototype.hasOwnProperty.call(data, "updateId") && data.updateId !== null) {
+        formData.append("update_id", String(data.updateId));
+      }
+
+      const response = await apiClient.postForm(
+        `/bonsai/${treeId}/photos/${photoId}/replace`,
+        formData
+      );
+      const mappedPhoto = mapPhoto(response);
+
+      updateTreeReferences(treeId, (tree) => {
+        const existingPhotos = Array.isArray(tree.photos) ? tree.photos : [];
+        let didReplace = false;
+        let updatedPhotos = existingPhotos.map((photo) => {
+          if (Number(photo.id) === Number(photoId)) {
+            didReplace = true;
+            return mappedPhoto;
+          }
+          if (mappedPhoto.isPrimary) {
+            return { ...photo, isPrimary: false };
+          }
+          return photo;
+        });
+
+        if (!didReplace) {
+          updatedPhotos = [mappedPhoto, ...existingPhotos];
+        }
+
+        const primaryPhoto =
+          mappedPhoto.isPrimary
+            ? mappedPhoto
+            : updatedPhotos.find((photo) => photo.isPrimary) ?? updatedPhotos[0];
+
+        return {
+          ...tree,
+          photos: updatedPhotos,
+          photoUrl: primaryPhoto
+            ? primaryPhoto.thumbnailUrl || primaryPhoto.url || primaryPhoto.fullUrl || tree.photoUrl
+            : tree.photoUrl,
+          fullPhotoUrl: primaryPhoto
+            ? primaryPhoto.fullUrl || primaryPhoto.url || tree.fullPhotoUrl
+            : tree.fullPhotoUrl,
+        };
+      });
+
+      return mappedPhoto;
+    },
+    [updateTreeReferences]
+  );
+
   const deleteTreePermanently = useCallback(async (treeId) => {
     await apiClient.delete(`/bonsai/${treeId}`);
     setGraveyard((prev) =>
@@ -844,6 +917,7 @@ export const TreesProvider = ({ children }) => {
       fetchTreeById,
       uploadTreePhoto,
       updateTreePhoto,
+      replaceTreePhotoFile,
       deleteTreePhoto,
       createTreeMeasurement,
       deleteTreeMeasurement,
@@ -869,6 +943,7 @@ export const TreesProvider = ({ children }) => {
       fetchTreeById,
       uploadTreePhoto,
       updateTreePhoto,
+      replaceTreePhotoFile,
       deleteTreePhoto,
       createTreeMeasurement,
       deleteTreeMeasurement,
