@@ -151,7 +151,7 @@ const TreeDetail = () => {
   const [detailError, setDetailError] = useState("");
   const [activeTab, setActiveTab] = useState('updates');
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
+  const [fullscreenViewer, setFullscreenViewer] = useState(null);
   const [accolades, setAccolades] = useState(
     treeFromCollection?.accolades ?? mockTreeData.accolades ?? []
   );
@@ -528,14 +528,78 @@ const TreeDetail = () => {
     };
   }, [isStageMenuOpen]);
 
+  const closeFullscreenViewer = useCallback(() => {
+    setFullscreenViewer(null);
+  }, []);
+
+  const openPhotoViewer = useCallback((photo, options = {}) => {
+    if (!photo) {
+      return;
+    }
+
+    const displayUrl = photo.fullUrl || photo.url;
+    if (!displayUrl) {
+      return;
+    }
+
+    const fallbackItems = [
+      {
+        id: photo.id ?? "single",
+        url: displayUrl,
+        title: photo.description ? photo.description : tree?.name || "Tree Photo",
+        subtitle: photo.date || photo.takenAt ? formatDate(photo.date || photo.takenAt) : undefined,
+        description: photo.description,
+      },
+    ];
+
+    const itemOverrides = options.items ?? null;
+    const items = (itemOverrides && itemOverrides.length > 0 ? itemOverrides : fallbackItems).filter(
+      (item) => item?.url
+    );
+
+    if (items.length === 0) {
+      return;
+    }
+
+    const initialIndex =
+      Number.isInteger(options.initialIndex) && options.initialIndex >= 0 && options.initialIndex < items.length
+        ? options.initialIndex
+        : 0;
+
+    setFullscreenViewer({ items, index: initialIndex });
+  }, [tree?.name]);
+
+  const goToFullscreenPhoto = useCallback((step) => {
+    setFullscreenViewer((prev) => {
+      if (!prev || !Array.isArray(prev.items) || prev.items.length <= 1) {
+        return prev;
+      }
+
+      const nextIndex = (prev.index + step + prev.items.length) % prev.items.length;
+      return {
+        ...prev,
+        index: nextIndex,
+      };
+    });
+  }, []);
+
   useEffect(() => {
-    if (!fullscreenPhoto) {
+    if (!fullscreenViewer) {
       return;
     }
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        setFullscreenPhoto(null);
+        closeFullscreenViewer();
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        goToFullscreenPhoto(1);
+      }
+
+      if (event.key === "ArrowLeft") {
+        goToFullscreenPhoto(-1);
       }
     };
 
@@ -543,7 +607,7 @@ const TreeDetail = () => {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [fullscreenPhoto]);
+  }, [fullscreenViewer, closeFullscreenViewer, goToFullscreenPhoto]);
 
   useEffect(() => {
     if (!isEditingNotes) {
@@ -1167,32 +1231,6 @@ const TreeDetail = () => {
     }
   };
 
-  const openPhotoViewer = (photo, options = {}) => {
-    if (!photo) {
-      return;
-    }
-
-    const displayUrl = photo.fullUrl || photo.url;
-    if (!displayUrl) {
-      return;
-    }
-
-    const title =
-      options.title ??
-      (photo.description ? photo.description : tree.name || "Tree Photo");
-
-    const subtitle =
-      options.subtitle ??
-      (photo.date ? formatDate(photo.date) : undefined);
-
-    setFullscreenPhoto({
-      url: displayUrl,
-      title,
-      subtitle,
-      description: options.description,
-    });
-  };
-
   const handleAccoladePreview = (accolade, linkedPhoto) => {
     const source = linkedPhoto ?? accolade.photo ?? null;
 
@@ -1216,12 +1254,23 @@ const TreeDetail = () => {
 
     openPhotoViewer(
       {
+        id: source.id,
         url: displayUrl,
+        fullUrl: source.fullUrl,
+        takenAt: source.takenAt,
+        date: source.date,
         description: source.description,
       },
       {
-        title: accolade.title,
-        subtitle: subtitleParts.join(" • ") || undefined,
+        items: [
+          {
+            id: source.id ?? `accolade-${accolade.id}`,
+            url: displayUrl,
+            title: accolade.title,
+            subtitle: subtitleParts.join(" • ") || undefined,
+            description: source.description,
+          },
+        ],
       }
     );
   };
@@ -1885,6 +1934,23 @@ const TreeDetail = () => {
         }
       : undefined;
 
+    const fullscreenItems = photoEntries
+      .map((photo) => {
+        const displayUrl = photo.fullUrl || photo.url;
+        if (!displayUrl) {
+          return null;
+        }
+
+        return {
+          id: photo.id,
+          url: displayUrl,
+          title: photo.description ? photo.description : tree.name || "Tree Photo",
+          subtitle: photo.date ? formatDate(photo.date) : undefined,
+          description: photo.description,
+        };
+      })
+      .filter(Boolean);
+
     return (
       <div className="space-y-6">
         <div
@@ -1907,7 +1973,8 @@ const TreeDetail = () => {
                 className="max-h-full w-auto max-w-full object-contain cursor-pointer drop-shadow-2xl"
                 onClick={() =>
                   openPhotoViewer(currentPhoto, {
-                    subtitle: currentPhoto.date ? formatDate(currentPhoto.date) : undefined,
+                    items: fullscreenItems,
+                    initialIndex: currentPhotoIndex,
                   })
                 }
               />
@@ -1916,7 +1983,8 @@ const TreeDetail = () => {
                 className="w-full h-full flex items-center justify-center cursor-pointer"
                 onClick={() =>
                   openPhotoViewer(currentPhoto, {
-                    subtitle: currentPhoto?.date ? formatDate(currentPhoto.date) : undefined,
+                    items: fullscreenItems,
+                    initialIndex: currentPhotoIndex,
                   })
                 }
               >
@@ -3559,54 +3627,84 @@ const TreeDetail = () => {
         </div>
       )}
 
-      {fullscreenPhoto?.url && (
+      {fullscreenViewer?.items?.length > 0 && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-8"
-          onClick={() => setFullscreenPhoto(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 px-3 py-4 sm:px-6 sm:py-8"
+          onClick={closeFullscreenViewer}
         >
           <div
-            className="relative w-full max-w-5xl"
+            className="relative w-full max-w-7xl"
             onClick={(event) => event.stopPropagation()}
           >
             <button
               type="button"
-              onClick={() => setFullscreenPhoto(null)}
-              className="absolute -top-3 -right-3 rounded-full bg-black/70 p-2 text-white transition hover:bg-black"
+              onClick={closeFullscreenViewer}
+              className="absolute right-1 top-1 z-40 rounded-full bg-black/70 p-2 text-white transition hover:bg-black sm:-top-3 sm:-right-3"
               aria-label="Close fullscreen photo"
             >
               <X className="h-5 w-5" />
             </button>
 
-            <img
-              src={fullscreenPhoto.url}
-              alt={fullscreenPhoto.title || "Tree photo"}
-              className="max-h-[80vh] w-full rounded-lg object-contain"
-            />
+            {fullscreenViewer.items.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => goToFullscreenPhoto(-1)}
+                  className="absolute left-2 top-1/2 z-30 -translate-y-1/2 rounded-full bg-black/55 p-3 text-white transition hover:bg-black/75"
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft className="h-7 w-7" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goToFullscreenPhoto(1)}
+                  className="absolute right-2 top-1/2 z-30 -translate-y-1/2 rounded-full bg-black/55 p-3 text-white transition hover:bg-black/75"
+                  aria-label="Next photo"
+                >
+                  <ChevronRight className="h-7 w-7" />
+                </button>
+              </>
+            )}
 
-            {(fullscreenPhoto.title ||
-              fullscreenPhoto.subtitle ||
-              fullscreenPhoto.description) && (
-              <div className="mt-4 space-y-2 text-center text-white">
-                {fullscreenPhoto.title && (
-                  <h3 className="text-xl font-semibold">
-                    {fullscreenPhoto.title}
+            <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-black shadow-2xl">
+              <img
+                src={fullscreenViewer.items[fullscreenViewer.index]?.url}
+                alt={fullscreenViewer.items[fullscreenViewer.index]?.title || "Tree photo"}
+                className="max-h-[84vh] w-full object-contain"
+              />
+            </div>
+
+            {(fullscreenViewer.items[fullscreenViewer.index]?.title ||
+              fullscreenViewer.items[fullscreenViewer.index]?.subtitle ||
+              fullscreenViewer.items[fullscreenViewer.index]?.description) && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-center text-white backdrop-blur-sm">
+                {fullscreenViewer.items[fullscreenViewer.index]?.title && (
+                  <h3 className="text-lg font-semibold sm:text-xl">
+                    {fullscreenViewer.items[fullscreenViewer.index].title}
                   </h3>
                 )}
-                {fullscreenPhoto.subtitle && (
-                  <p className="text-sm text-white/80">
-                    {fullscreenPhoto.subtitle}
+                {fullscreenViewer.items[fullscreenViewer.index]?.subtitle && (
+                  <p className="mt-1 text-sm text-white/80">
+                    {fullscreenViewer.items[fullscreenViewer.index].subtitle}
                   </p>
                 )}
-                {fullscreenPhoto.description && (
-                  <p className="text-sm text-white/70">
-                    {fullscreenPhoto.description}
+                {fullscreenViewer.items[fullscreenViewer.index]?.description && (
+                  <p className="mt-1 text-sm text-white/70">
+                    {fullscreenViewer.items[fullscreenViewer.index].description}
                   </p>
                 )}
               </div>
             )}
+
+            {fullscreenViewer.items.length > 1 && (
+              <p className="mt-3 text-center text-xs text-white/70 sm:text-sm">
+                {fullscreenViewer.index + 1} / {fullscreenViewer.items.length}
+              </p>
+            )}
           </div>
         </div>
       )}
+
     </div>
     </>
   );
