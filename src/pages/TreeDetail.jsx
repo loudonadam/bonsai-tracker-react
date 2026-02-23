@@ -1247,9 +1247,6 @@ const TreeDetail = () => {
     if (dateValue) {
       subtitleParts.push(formatDate(dateValue));
     }
-    if (source.description) {
-      subtitleParts.push(source.description);
-    }
 
     openPhotoViewer(
       {
@@ -3671,19 +3668,11 @@ const TreeDetail = () => {
               />
             </div>
 
-              {(fullscreenViewer.items[fullscreenViewer.index]?.subtitle ||
-                fullscreenViewer.items[fullscreenViewer.index]?.description) && (
+              {fullscreenViewer.items[fullscreenViewer.index]?.subtitle && (
                 <div className="absolute left-3 top-3 z-20 max-w-[80%] rounded-lg border border-white/15 bg-black/45 px-3 py-2 text-left text-white shadow-lg backdrop-blur-sm sm:left-4 sm:top-4">
-                  {fullscreenViewer.items[fullscreenViewer.index]?.subtitle && (
-                    <p className="text-xs text-white/80 sm:text-sm">
-                      {fullscreenViewer.items[fullscreenViewer.index].subtitle}
-                    </p>
-                  )}
-                  {fullscreenViewer.items[fullscreenViewer.index]?.description && (
-                    <p className="mt-1 text-xs text-white/70 sm:text-sm">
-                      {fullscreenViewer.items[fullscreenViewer.index].description}
-                    </p>
-                  )}
+                  <p className="text-xs text-white/80 sm:text-sm">
+                    {fullscreenViewer.items[fullscreenViewer.index].subtitle}
+                  </p>
                 </div>
               )}
 
