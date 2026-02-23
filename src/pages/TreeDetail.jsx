@@ -546,7 +546,6 @@ const TreeDetail = () => {
       {
         id: photo.id ?? "single",
         url: displayUrl,
-        title: photo.description ? photo.description : tree?.name || "Tree Photo",
         subtitle: photo.date || photo.takenAt ? formatDate(photo.date || photo.takenAt) : undefined,
         description: photo.description,
       },
@@ -567,7 +566,7 @@ const TreeDetail = () => {
         : 0;
 
     setFullscreenViewer({ items, index: initialIndex });
-  }, [tree?.name]);
+  }, []);
 
   const goToFullscreenPhoto = useCallback((step) => {
     setFullscreenViewer((prev) => {
@@ -1266,7 +1265,6 @@ const TreeDetail = () => {
           {
             id: source.id ?? `accolade-${accolade.id}`,
             url: displayUrl,
-            title: accolade.title,
             subtitle: subtitleParts.join(" • ") || undefined,
             description: source.description,
           },
@@ -1944,7 +1942,6 @@ const TreeDetail = () => {
         return {
           id: photo.id,
           url: displayUrl,
-          title: photo.description ? photo.description : tree.name || "Tree Photo",
           subtitle: photo.date ? formatDate(photo.date) : undefined,
           description: photo.description,
         };
@@ -3669,38 +3666,32 @@ const TreeDetail = () => {
             <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-black shadow-2xl">
               <img
                 src={fullscreenViewer.items[fullscreenViewer.index]?.url}
-                alt={fullscreenViewer.items[fullscreenViewer.index]?.title || "Tree photo"}
+                alt={fullscreenViewer.items[fullscreenViewer.index]?.description || "Tree photo"}
                 className="max-h-[84vh] w-full object-contain"
               />
             </div>
 
-            {(fullscreenViewer.items[fullscreenViewer.index]?.title ||
-              fullscreenViewer.items[fullscreenViewer.index]?.subtitle ||
-              fullscreenViewer.items[fullscreenViewer.index]?.description) && (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-center text-white backdrop-blur-sm">
-                {fullscreenViewer.items[fullscreenViewer.index]?.title && (
-                  <h3 className="text-lg font-semibold sm:text-xl">
-                    {fullscreenViewer.items[fullscreenViewer.index].title}
-                  </h3>
-                )}
-                {fullscreenViewer.items[fullscreenViewer.index]?.subtitle && (
-                  <p className="mt-1 text-sm text-white/80">
-                    {fullscreenViewer.items[fullscreenViewer.index].subtitle}
-                  </p>
-                )}
-                {fullscreenViewer.items[fullscreenViewer.index]?.description && (
-                  <p className="mt-1 text-sm text-white/70">
-                    {fullscreenViewer.items[fullscreenViewer.index].description}
-                  </p>
-                )}
-              </div>
-            )}
+              {(fullscreenViewer.items[fullscreenViewer.index]?.subtitle ||
+                fullscreenViewer.items[fullscreenViewer.index]?.description) && (
+                <div className="absolute left-3 top-3 z-20 max-w-[80%] rounded-lg border border-white/15 bg-black/45 px-3 py-2 text-left text-white shadow-lg backdrop-blur-sm sm:left-4 sm:top-4">
+                  {fullscreenViewer.items[fullscreenViewer.index]?.subtitle && (
+                    <p className="text-xs text-white/80 sm:text-sm">
+                      {fullscreenViewer.items[fullscreenViewer.index].subtitle}
+                    </p>
+                  )}
+                  {fullscreenViewer.items[fullscreenViewer.index]?.description && (
+                    <p className="mt-1 text-xs text-white/70 sm:text-sm">
+                      {fullscreenViewer.items[fullscreenViewer.index].description}
+                    </p>
+                  )}
+                </div>
+              )}
 
-            {fullscreenViewer.items.length > 1 && (
-              <p className="mt-3 text-center text-xs text-white/70 sm:text-sm">
-                {fullscreenViewer.index + 1} / {fullscreenViewer.items.length}
-              </p>
-            )}
+              {fullscreenViewer.items.length > 1 && (
+                <p className="absolute bottom-3 right-3 z-20 rounded-md bg-black/45 px-2 py-1 text-xs text-white/80 sm:bottom-4 sm:right-4 sm:text-sm">
+                  {fullscreenViewer.index + 1} / {fullscreenViewer.items.length}
+                </p>
+              )}
           </div>
         </div>
       )}
