@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -125,13 +126,47 @@ class PhotoOut(BaseModel):
     @classmethod
     def from_model(cls, photo: models.Photo) -> "PhotoOut":
         base_url = settings.media_url.rstrip("/")
+
+        def resolve_existing_media_url(stored_path: Optional[str]) -> str:
+            if not stored_path:
+                return ""
+
+            candidate = Path(stored_path)
+            filesystem_path = (
+                candidate
+                if candidate.is_absolute()
+                else settings.media_root / candidate
+            )
+
+            if not filesystem_path.exists():
+                return ""
+
+            normalized_path = str(candidate).replace("\\", "/")
+            if candidate.is_absolute():
+                try:
+                    normalized_path = str(candidate.relative_to(settings.media_root)).replace("\\", "/")
+                except ValueError:
+                    return ""
+
+            return f"{base_url}/{normalized_path}"
+
+        resolved_full = resolve_existing_media_url(photo.full_path)
+        resolved_thumbnail = resolve_existing_media_url(photo.thumbnail_path)
+
+        # If one variant is missing on disk, fall back to the existing file so
+        # clients still render a photo instead of an empty placeholder.
+        if not resolved_thumbnail and resolved_full:
+            resolved_thumbnail = resolved_full
+        if not resolved_full and resolved_thumbnail:
+            resolved_full = resolved_thumbnail
+
         return cls(
             id=photo.id,
             update_id=photo.update_id,
             description=photo.description,
             taken_at=photo.taken_at,
-            full_url=f"{base_url}/{photo.full_path}" if photo.full_path else "",
-            thumbnail_url=f"{base_url}/{photo.thumbnail_path}" if photo.thumbnail_path else "",
+            full_url=resolved_full,
+            thumbnail_url=resolved_thumbnail,
             is_primary=photo.is_primary,
             created_at=photo.created_at,
         )
